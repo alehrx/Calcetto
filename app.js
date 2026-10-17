@@ -632,6 +632,34 @@ function rimuoviGiocatore(name) {
   }
 }
 
+// --- AZZERA CLASSIFICA STAGIONALE ---
+function confermaResetClassifica() {
+  const confermato = confirm(
+    "⚠️ SEI SICURO DI VOLER AZZERARE LA CLASSIFICA?\n\n" +
+    "• Tutti i colleghi torneranno a 1200 punti Elo base.\n" +
+    "• Vittorie e sconfitte saranno azzerate a 0.\n" +
+    "• I nomi e i ruoli preferiti rimarranno intatti."
+  );
+
+  if (confermato) {
+    Object.keys(state.stats).forEach(name => {
+      state.stats[name].elo = 1200;
+      state.stats[name].vinte = 0;
+      state.stats[name].perse = 0;
+    });
+
+    state.storico_squadre_oggi = [];
+    state.coppie_giocate_oggi = [];
+    Object.keys(state.partite_giocate_oggi).forEach(g => {
+      state.partite_giocate_oggi[g] = 0;
+    });
+
+    salvaStatoLocale();
+    renderAll();
+    showToast("Classifica stagionale azzerata! Tutti a 1200 pt.");
+  }
+}
+
 // --- BACKUP & EXPORT JSON ---
 function esportaDatiJSON() {
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
