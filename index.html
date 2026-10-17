@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Calcio Balilla - Squadre & Elo</title>
+  
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Calcetto">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Mobile-optimized touch and scroll */
+    body {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    input, select, textarea {
+      user-select: auto;
+    }
+    .pb-safe {
+      padding-bottom: env(safe-area-inset-bottom, 1rem);
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-2">
+      <span class="text-2xl">⚽</span>
+      <div>
+        <h1 class="text-lg font-bold tracking-tight text-white leading-tight">Calcio Balilla</h1>
+        <p class="text-xs text-slate-400">Matchmaker & Classifica Elo</p>
+      </div>
+    </div>
+    <div id="cloud-status-badge" class="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span id="cloud-status-text">Locale</span>
+    </div>
+  </header>
+
+  <!-- MAIN VIEW CONTAINER -->
+  <main class="flex-1 max-w-lg w-full mx-auto p-4 pb-24 overflow-y-auto">
+
+    <!-- ==================== TAB 1: PARTITA ==================== -->
+    <section id="view-partita" class="space-y-5">
+      <!-- Attendance Selector Card -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-lg">👥</span>
+            <h2 class="font-bold text-white text-base">Chi gioca oggi?</h2>
+          </div>
+          <span id="count-presenti" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            0 selezionati
+          </span>
+        </div>
+        
+        <p class="text-xs text-slate-400 mb-3">Tocca per selezionare i presenti. Chi ha giocato meno oggi avrà la precedenza.</p>
+
+        <!-- Player Pills Grid -->
+        <div id="presenti-pills-container" class="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="flex justify-between items-center mt-3 pt-3 border-t border-slate-700/60 text-xs">
+          <button onclick="selezionaTuttiPresenti()" class="text-emerald-400 hover:text-emerald-300 font-medium py-1 px-2 rounded hover:bg-slate-700/50 transition">
+            Tutti
+          </button>
+          <button onclick="deselezionaTuttiPresenti()" class="text-slate-400 hover:text-slate-300 font-medium py-1 px-2 rounded hover:bg-slate-700/50 transition">
+            Deseleziona
+          </button>
+        </div>
+      </div>
+
+      <!-- Controls & Match Generation -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex flex-col">
+            <span class="font-medium text-sm text-slate-200">⚖️ Bilanciamento Elo & Ruoli</span>
+            <span class="text-xs text-slate-400">Evita doppie difese/attacchi e pareggia i punteggi</span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="toggle-ranking" checked class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+          </label>
+        </div>
+
+        <button onclick="generaProssimaPartita()" class="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-900/30 transition flex items-center justify-center space-x-2 text-base">
+          <span>🎲</span>
+          <span>Genera Prossima Partita (2 vs 2)</span>
+        </button>
+      </div>
+
+      <!-- Active Session Matches List -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold text-white text-base flex items-center space-x-1.5">
+            <span>📝</span>
+            <span>Partite di Oggi</span>
+          </h2>
+          <span id="session-matches-count" class="text-xs text-slate-400">0 partite</span>
+        </div>
+
+        <div id="matches-container" class="space-y-3">
+          <!-- Populated by JS -->
+          <div class="bg-slate-800/40 border border-slate-700/40 rounded-xl p-6 text-center text-slate-400 text-sm">
+            Nessuna partita generata in questa sessione.<br>Seleziona almeno 4 colleghi e premi il tasto verde!
+          </div>
+        </div>
+
+        <!-- Reset Session Button -->
+        <div class="pt-2">
+          <button onclick="confermaAzzeraSessione()" class="w-full py-2.5 px-3 rounded-xl border border-slate-700 bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 text-xs font-medium transition flex items-center justify-center space-x-2">
+            <span>♻️</span>
+            <span>Azzera Sessione Odierna (Nuovo Turno)</span>
+          </button>
+          <p class="text-[11px] text-slate-500 text-center mt-1.5">
+            Azzera la rotazione delle coppie e il contatore di oggi. <b>Non</b> tocca la classifica generale Elo.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: CLASSIFICA ==================== -->
+    <section id="view-classifica" class="space-y-5 hidden">
+      <div class="bg-gradient-to-br from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/20 rounded-2xl p-4">
+        <h2 class="font-bold text-lg text-white flex items-center space-x-2">
+          <span>🏆</span>
+          <span>Classifica Elo Globale</span>
+        </h2>
+        <p class="text-xs text-slate-400 mt-1">
+          Ranking meritocratico: battere avversari con Elo più alto conferisce molti più punti! (K=40)
+        </p>
+      </div>
+
+      <!-- Top 3 Podium Highlights -->
+      <div id="podium-container" class="grid grid-cols-3 gap-2">
+        <!-- Injected by JS -->
+      </div>
+
+      <!-- Full Ranked Table -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl overflow-hidden shadow-sm">
+        <div class="px-4 py-3 border-b border-slate-700/60 flex items-center justify-between">
+          <h3 class="font-semibold text-sm text-slate-200">Tutti i Giocatori Attivi</h3>
+          <span id="active-players-count" class="text-xs text-slate-400"></span>
+        </div>
+        <div id="ranked-list" class="divide-y divide-slate-700/50">
+          <!-- Injected by JS -->
+        </div>
+      </div>
+
+      <!-- Inactive Players Card -->
+      <div id="inactive-card" class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-3.5 hidden">
+        <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center space-x-1.5">
+          <span>👤</span>
+          <span>Nessuna partita registrata (1200 pt base)</span>
+        </h4>
+        <p id="inactive-players-list" class="text-xs text-slate-400 leading-relaxed"></p>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: GESTIONE ==================== -->
+    <section id="view-gestione" class="space-y-5 hidden">
+      <!-- Add New Player Card -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <h2 class="font-bold text-white text-base flex items-center space-x-2">
+          <span>➕</span>
+          <span>Aggiungi Nuovo Collega</span>
+        </h2>
+        
+        <form id="form-add-player" onsubmit="handleAggiungiGiocatore(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Nome Collega</label>
+            <input type="text" id="input-new-name" placeholder="Es. Marco" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Ruolo Preferito</label>
+            <select id="select-new-role" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+              <option value="Indifferente">Indifferente</option>
+              <option value="Attaccante">Attaccante</option>
+              <option value="Difesa">Difesa</option>
+            </select>
+          </div>
+          <button type="submit" class="w-full bg-slate-700 hover:bg-slate-600 active:scale-[0.99] text-white font-medium py-2.5 px-4 rounded-xl text-sm transition">
+            Aggiungi alla Lista
+          </button>
+        </form>
+      </div>
+
+      <!-- Registered Players List & Role Editing -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold text-white text-base flex items-center space-x-2">
+            <span>👥</span>
+            <span>Colleghi Registrati</span>
+          </h2>
+          <span id="total-registered-badge" class="text-xs font-medium text-slate-400">0 colleghi</span>
+        </div>
+        <div id="gestione-players-list" class="space-y-2 max-h-80 overflow-y-auto pr-1">
+          <!-- Injected by JS -->
+        </div>
+      </div>
+
+      <!-- Cloud Sync & Settings (Supabase / Backup) -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <h2 class="font-bold text-white text-base flex items-center space-x-2">
+          <span>☁️</span>
+          <span>Sincronizzazione Cloud Multi-Dispositivo</span>
+        </h2>
+        <p class="text-xs text-slate-400">
+          Vuoi che tutti i colleghi vedano le stesse partite in tempo reale da telefoni diversi? Collega un database gratuito Supabase:
+        </p>
+
+        <div class="space-y-2">
+          <input type="text" id="supabase-url" placeholder="Supabase Project URL (es. https://xyz.supabase.co)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          <input type="password" id="supabase-key" placeholder="Supabase Anon/Public Key" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          <div class="flex space-x-2">
+            <button onclick="salvaConfigCloud()" class="flex-1 bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-medium py-2 rounded-xl transition">
+              Salva Connessione Cloud
+            </button>
+            <button onclick="disconnettiCloud()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium px-3 py-2 rounded-xl transition">
+              Usa Solo Locale
+            </button>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-700/60 flex items-center justify-between">
+          <span class="text-xs text-slate-400">Backup & Ripristino:</span>
+          <div class="space-x-2">
+            <button onclick="esportaDatiJSON()" class="text-xs text-emerald-400 hover:underline">Esporta JSON</button>
+            <span class="text-slate-600">•</span>
+            <button onclick="document.getElementById('import-file').click()" class="text-xs text-emerald-400 hover:underline">Importa JSON</button>
+            <input type="file" id="import-file" onchange="importaDatiJSON(event)" class="hidden" accept=".json">
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- BOTTOM NAVIGATION TAB BAR (MOBILE DOCK) -->
+  <nav class="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur border-t border-slate-800 pb-safe">
+    <div class="max-w-lg mx-auto flex items-center justify-around py-2">
+      <button onclick="switchTab('partita')" id="nav-partita" class="flex flex-col items-center justify-center flex-1 py-1.5 text-emerald-400 transition">
+        <span class="text-xl">⚽</span>
+        <span class="text-[11px] font-semibold mt-0.5">Partita</span>
+      </button>
+      <button onclick="switchTab('classifica')" id="nav-classifica" class="flex flex-col items-center justify-center flex-1 py-1.5 text-slate-400 hover:text-slate-200 transition">
+        <span class="text-xl">🏆</span>
+        <span class="text-[11px] font-semibold mt-0.5">Classifica</span>
+      </button>
+      <button onclick="switchTab('gestione')" id="nav-gestione" class="flex flex-col items-center justify-center flex-1 py-1.5 text-slate-400 hover:text-slate-200 transition">
+        <span class="text-xl">⚙️</span>
+        <span class="text-[11px] font-semibold mt-0.5">Gestione</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Notification Toast Container -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-xs font-semibold shadow-xl transition-all duration-300 opacity-0 pointer-events-none transform -translate-y-2">
+  </div>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
