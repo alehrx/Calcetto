@@ -5,27 +5,27 @@
 
 // --- DATI PREDEFINITI (Migrati da statistiche.json e presenti.json) ---
 const DEFAULT_PLAYERS = {
-  "Luca": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1178.85 },
-  "Giovanni": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1201.15 },
+  "Luca": { "ruolo": "Indifferente", "vinte": 1, "perse": 2, "elo": 1177.83 },
+  "Giovanni": { "ruolo": "Indifferente", "vinte": 1, "perse": 0, "elo": 1219.99 },
   "Alessandro": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1180.0 },
   "Lorenzo": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1178.85 },
   "Alex": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1180.0 },
-  "Alexander": { "ruolo": "Difesa", "vinte": 1, "perse": 0, "elo": 1258.85 },
-  "Rafael": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
-  "Chiara": { "ruolo": "Indifferente", "vinte": 1, "perse": 0, "elo": 1181.15 },
-  "Ludovica": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
+  "Alexander": { "ruolo": "Difesa", "vinte": 3, "perse": 0, "elo": 1297.22 },
+  "Rafael": { "ruolo": "Indifferente", "vinte": 0, "perse": 2, "elo": 1162.25 },
+  "Chiara": { "ruolo": "Indifferente", "vinte": 2, "perse": 2, "elo": 1161.83 },
+  "Ludovica": { "ruolo": "Indifferente", "vinte": 1, "perse": 1, "elo": 1200.49 },
   "Lucio": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1238.85 },
   "Libero": { "ruolo": "Indifferente", "vinte": 1, "perse": 0, "elo": 1221.15 },
   "Alberto": { "ruolo": "Attaccante", "vinte": 1, "perse": 0, "elo": 1181.15 },
   "Salvatore": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
-  "Massimo": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
+  "Massimo": { "ruolo": "Indifferente", "vinte": 2, "perse": 1, "elo": 1219.86 },
   "Eden": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
-  "Francesco": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
+  "Francesco": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1180.55 },
   "Nicola": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 }
 };
 
 const DEFAULT_PRESENTI = [
-  "Ludovica", "Luca", "Chiara", "Alexander", "Massimo", "Rafael", "Francesco", "Nicola", "Eden"
+  "Ludovica", "Luca", "Chiara", "Alexander", "Massimo", "Rafael", "Giovanni", "Alessandro", "Lorenzo"
 ];
 
 // --- STATO APPLICAZIONE ---
