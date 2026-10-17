@@ -1,15 +1,15 @@
 {
     "Luca": {
         "ruolo": "Indifferente",
-        "vinte": 0,
-        "perse": 1,
-        "elo": 1178.8499774443092
+        "vinte": 1,
+        "perse": 2,
+        "elo": 1177.8283504378865
     },
     "Giovanni": {
         "ruolo": "Indifferente",
-        "vinte": 0,
+        "vinte": 1,
         "perse": 0,
-        "elo": 1201.1500225556908
+        "elo": 1219.9878629676864
     },
     "Alessandro": {
         "ruolo": "Indifferente",
@@ -31,27 +31,27 @@
     },
     "Alexander": {
         "ruolo": "Difesa",
-        "vinte": 1,
+        "vinte": 3,
         "perse": 0,
-        "elo": 1258.8499774443092
+        "elo": 1297.218048525881
     },
     "Rafael": {
         "ruolo": "Indifferente",
         "vinte": 0,
-        "perse": 0,
-        "elo": 1200
+        "perse": 2,
+        "elo": 1162.2461880885812
     },
     "Chiara": {
         "ruolo": "Indifferente",
-        "vinte": 1,
-        "perse": 0,
-        "elo": 1181.1500225556908
+        "vinte": 2,
+        "perse": 2,
+        "elo": 1161.826683219998
     },
     "Ludovica": {
         "ruolo": "Indifferente",
-        "vinte": 0,
-        "perse": 0,
-        "elo": 1200
+        "vinte": 1,
+        "perse": 1,
+        "elo": 1200.4854989236974
     },
     "Lucio": {
         "ruolo": "Indifferente",
@@ -79,9 +79,9 @@
     },
     "Massimo": {
         "ruolo": "Indifferente",
-        "vinte": 0,
-        "perse": 0,
-        "elo": 1200
+        "vinte": 2,
+        "perse": 1,
+        "elo": 1219.8594674184183
     },
     "Eden": {
         "ruolo": "Indifferente",
@@ -92,8 +92,8 @@
     "Francesco": {
         "ruolo": "Indifferente",
         "vinte": 0,
-        "perse": 0,
-        "elo": 1200
+        "perse": 1,
+        "elo": 1180.5479004178515
     },
     "Nicola": {
         "ruolo": "Indifferente",
