@@ -44,7 +44,7 @@ const CLOUD_CONFIG_KEY = 'calcetto_cloud_config';
 function initApp() {
   caricaStato();
   renderAll();
-  initGitHubConfig();
+  initCloudLive();
   registerServiceWorker();
 }
 
@@ -57,7 +57,7 @@ function caricaStato() {
     } else {
       state.stats = JSON.parse(JSON.stringify(DEFAULT_PLAYERS));
       state.presenti = [...DEFAULT_PRESENTI];
-      salvaStatoLocale();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
   } catch (e) {
     console.error("Errore caricamento stato locale:", e);
@@ -78,7 +78,7 @@ function caricaStato() {
 
 function salvaStatoLocale() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  syncWithCloudIfConfigured();
+  pushToCloud();
 }
 
 // --- NAVIGAZIONE TABS ---
@@ -688,178 +688,91 @@ function importaDatiJSON(event) {
 }
 
 // ==========================================
-// SEZIONE 4: PUBBLICAZIONE SU GITHUB (ARBITRO)
+// SEZIONE 4: CLOUD SYNC LIVE (SUPABASE)
 // ==========================================
-const GITHUB_CONFIG_KEY = 'calcetto_github_config';
-let githubConfig = { repo: 'HarejAl/Calcetto', token: '' };
+const SUPABASE_URL = "https://zxdelivduwrbbthflqys.supabase.co";
+const SUPABASE_KEY = "sb_publishable_UOTWumLKxj3hqJ2KMXDn6Q_IpQNdRxI";
 
-function initGitHubConfig() {
-  const raw = localStorage.getItem(GITHUB_CONFIG_KEY);
-  if (raw) {
-    try {
-      githubConfig = { ...githubConfig, ...JSON.parse(raw) };
-    } catch (e) {}
-  }
-  
-  const repoInput = document.getElementById('github-repo');
-  const tokenInput = document.getElementById('github-token');
-  if (repoInput) repoInput.value = githubConfig.repo || 'HarejAl/Calcetto';
-  if (tokenInput) tokenInput.value = githubConfig.token || '';
+let isSyncing = false;
+let lastRemoteUpdatedAt = null;
 
-  aggiornaBadgeStato(!!githubConfig.token);
-  
-  // Sincronizza le statistiche ufficiali da GitHub Pages
-  caricaStatisticheDaRemoto();
-}
+function initCloudLive() {
+  // Pull iniziale immediato
+  pullFromCloud();
 
-function aggiornaBadgeStato(haToken) {
-  const badge = document.getElementById('cloud-status-badge');
-  const text = document.getElementById('cloud-status-text');
-  const authBadge = document.getElementById('github-auth-badge');
-  const quickPublish = document.getElementById('quick-publish-container');
-
-  if (haToken) {
-    if (text) text.innerText = 'Arbitro';
-    if (badge) badge.className = 'flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
-    if (authBadge) {
-      authBadge.innerText = 'Arbitro Attivo';
-      authBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+  // Polling automatico ogni 8 secondi in background
+  setInterval(() => {
+    if (!document.hidden) {
+      pullFromCloud();
     }
-    if (quickPublish) quickPublish.classList.remove('hidden');
-  } else {
-    if (text) text.innerText = 'Online';
-    if (badge) badge.className = 'flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700';
-    if (authBadge) {
-      authBadge.innerText = 'Non configurato';
-      authBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300';
+  }, 8000);
+
+  // Quando un collega sblocca il telefono o torna sulla pagina, ricarica subito
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      pullFromCloud();
     }
-    if (quickPublish) quickPublish.classList.add('hidden');
-  }
+  });
 }
 
-function salvaConfigGitHub() {
-  const repo = (document.getElementById('github-repo')?.value.trim()) || 'HarejAl/Calcetto';
-  const token = document.getElementById('github-token')?.value.trim();
-
-  if (!token) {
-    showToast("Inserisci un Personal Access Token valido!", "error");
-    return;
-  }
-
-  githubConfig = { repo, token };
-  localStorage.setItem(GITHUB_CONFIG_KEY, JSON.stringify(githubConfig));
-  aggiornaBadgeStato(true);
-  showToast("Token salvato! Ora questo telefono può pubblicare su GitHub.");
-}
-
-function rimuoviConfigGitHub() {
-  localStorage.removeItem(GITHUB_CONFIG_KEY);
-  githubConfig = { repo: 'HarejAl/Calcetto', token: '' };
-  const tokenInput = document.getElementById('github-token');
-  if (tokenInput) tokenInput.value = '';
-  aggiornaBadgeStato(false);
-  showToast("Token rimosso. Telefono in modalità visualizzatore.");
-}
-
-// Carica statistiche.json direttamente da GitHub Pages per visitatori/colleghi
-async function caricaStatisticheDaRemoto() {
+async function pushToCloud() {
+  if (isSyncing) return;
   try {
-    const res = await fetch('./statistiche.json?t=' + Date.now());
-    if (res.ok) {
-      const remoteStats = await res.json();
-      if (remoteStats && typeof remoteStats === 'object' && Object.keys(remoteStats).length > 0) {
-        // Se non abbiamo una sessione non conclusa su questo telefono, aggiorna con i dati ufficiali
-        if (!state.storico_squadre_oggi || state.storico_squadre_oggi.length === 0 || !githubConfig.token) {
-          state.stats = remoteStats;
-          salvaStatoLocale();
-          renderAll();
-        }
-      }
-    }
-  } catch (e) {
-    console.log("Dati remoti non disponibili, uso dati locali.");
-  }
-}
-
-// Base64 encoding sicuro con supporto UTF-8 per browser
-function utf8_to_b64(str) {
-  return window.btoa(unescape(encodeURIComponent(str)));
-}
-
-// Pubblicazione diretta su GitHub API dal browser del telefono
-async function pubblicaSuGitHub() {
-  if (!githubConfig.token) {
-    showToast("Configura prima il tuo GitHub Token nella scheda Gestione!", "error");
-    switchTab('gestione');
-    return;
-  }
-
-  const repo = githubConfig.repo || 'HarejAl/Calcetto';
-  const token = githubConfig.token;
-
-  const btnGestione = document.getElementById('btn-pubblica-gestione');
-  if (btnGestione) {
-    btnGestione.disabled = true;
-    btnGestione.innerHTML = '<span>⏳</span><span>Pubblicazione su GitHub in corso...</span>';
-  }
-
-  try {
-    showToast("Connessione a GitHub in corso...");
-    
-    // 1. Recupera lo SHA corrente di statistiche.json
-    const urlStatistiche = `https://api.github.com/repos/${repo}/contents/statistiche.json`;
-    const resSha = await fetch(urlStatistiche, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json'
-      }
-    });
-
-    let shaStatistiche = null;
-    if (resSha.ok) {
-      const data = await resSha.json();
-      shaStatistiche = data.sha;
-    } else if (resSha.status === 401) {
-      throw new Error("Token non valido o scaduto! Verifica il token.");
-    } else if (resSha.status !== 404) {
-      throw new Error(`Errore GitHub (${resSha.status}): verifica i permessi.`);
-    }
-
-    // 2. Prepara il payload
-    const contentStr = JSON.stringify(state.stats, null, 4);
-    const contentBase64 = utf8_to_b64(contentStr);
-
+    const endpoint = `${SUPABASE_URL}/rest/v1/calcetto_state`;
     const payload = {
-      message: "Aggiornamento classifica calcetto da web app (Arbitro)",
-      content: contentBase64
+      id: 'global',
+      data: state,
+      updated_at: new Date().toISOString()
     };
-    if (shaStatistiche) payload.sha = shaStatistiche;
 
-    // 3. Esegui il commit tramite GitHub API
-    const resPut = await fetch(urlStatistiche, {
-      method: 'PUT',
+    await fetch(endpoint, {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json'
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
       },
       body: JSON.stringify(payload)
     });
-
-    if (!resPut.ok) {
-      const err = await resPut.json().catch(() => ({}));
-      throw new Error(err.message || `Errore commit (${resPut.status})`);
-    }
-
-    showToast("🚀 Classifica pubblicata su GitHub! I colleghi vedranno gli aggiornamenti.", "success");
-
   } catch (err) {
-    console.error("Errore pubblicazione GitHub:", err);
-    showToast(err.message || "Errore durante la pubblicazione!", "error");
-  } finally {
-    if (btnGestione) {
-      btnGestione.disabled = false;
-      btnGestione.innerHTML = '<span>🚀</span><span>Pubblica Ora la Classifica Online</span>';
+    console.warn("Push cloud fallita (normale se offline):", err);
+  }
+}
+
+async function pullFromCloud(showToastFeedback = false) {
+  try {
+    const endpoint = `${SUPABASE_URL}/rest/v1/calcetto_state?id=eq.global&select=data,updated_at`;
+    const res = await fetch(endpoint, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+
+    if (res.ok) {
+      const rows = await res.json();
+      if (rows && rows.length > 0 && rows[0].data) {
+        const remote = rows[0];
+        if (!lastRemoteUpdatedAt || remote.updated_at !== lastRemoteUpdatedAt) {
+          lastRemoteUpdatedAt = remote.updated_at;
+          isSyncing = true;
+          state = { ...state, ...remote.data };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          renderAll();
+          isSyncing = false;
+          if (showToastFeedback) {
+            showToast("Classifica aggiornata dal Cloud!", "success");
+          }
+        } else if (showToastFeedback) {
+          showToast("I dati sono già sincronizzati!", "success");
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Pull cloud fallita:", err);
+    if (showToastFeedback) {
+      showToast("Impossibile connettersi al Cloud (offline)", "error");
     }
   }
 }
