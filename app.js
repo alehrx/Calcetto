@@ -770,33 +770,6 @@ function confermaResetClassifica() {
   });
 }
 
-// --- BACKUP & EXPORT JSON ---
-function esportaDatiJSON() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
-  const dlAnchorElem = document.createElement('a');
-  dlAnchorElem.setAttribute("href", dataStr);
-  dlAnchorElem.setAttribute("download", `calcetto_backup_${new Date().toISOString().slice(0,10)}.json`);
-  dlAnchorElem.click();
-}
-
-function importaDatiJSON(event) {
-  const fileReader = new FileReader();
-  fileReader.onload = function() {
-    try {
-      const imported = JSON.parse(fileReader.result);
-      if (imported.stats) {
-        state = { ...state, ...imported };
-        salvaStatoLocale();
-        renderAll();
-        showToast("Backup importato con successo!");
-      }
-    } catch (e) {
-      showToast("File JSON non valido!", "error");
-    }
-  };
-  fileReader.readAsText(event.target.files[0]);
-}
-
 // ==========================================
 // SEZIONE 4: CLOUD SYNC LIVE (SUPABASE)
 // ==========================================
