@@ -54,11 +54,7 @@
       <span class="text-2xl">⚽</span>
       <div>
         <h1 class="text-base font-bold tracking-tight text-white leading-tight">Calcio Balilla</h1>
-        <!-- Group Indicator Badge -->
-        <button onclick="apriModalCambiaGruppo()" class="text-xs text-emerald-400 font-semibold flex items-center space-x-1 hover:underline">
-          <span id="header-group-name">Caricamento...</span>
-          <span class="text-[10px] text-slate-500">▼</span>
-        </button>
+        <p id="header-group-name" class="text-xs text-emerald-400 font-semibold">Caricamento...</p>
       </div>
     </div>
     <div id="cloud-status-badge" onclick="pullFromCloud(true)" title="Tocca per sincronizzare" class="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 cursor-pointer active:scale-95 transition">
@@ -246,13 +242,10 @@
           Condividi questo link con i colleghi del tuo gruppo per permettere loro di accedere a questa classifica separata:
         </p>
 
-        <div class="flex space-x-2">
-          <button onclick="copiaLinkGruppo()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-semibold py-2.5 px-3 rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow">
+        <div class="pt-1">
+          <button onclick="copiaLinkGruppo()" class="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-semibold py-2.5 px-3 rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow">
             <span>📋</span>
-            <span>Copia Link del Gruppo</span>
-          </button>
-          <button onclick="apriModalCambiaGruppo()" class="bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-300 font-medium py-2.5 px-3 rounded-xl text-xs transition">
-            Cambia
+            <span>Copia Link di Invito per i Colleghi</span>
           </button>
         </div>
       </div>
@@ -354,41 +347,6 @@
         </button>
         <button type="button" onclick="confermaPinModal()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-semibold py-2.5 rounded-xl transition">
           Conferma
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Switch / Create Group Modal -->
-  <div id="group-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-800 border border-slate-700 max-w-xs w-full rounded-2xl p-5 shadow-2xl space-y-4">
-      <div class="text-center space-y-1">
-        <span class="text-3xl">🏷️</span>
-        <h3 class="font-bold text-base text-white">Cambia o Crea Gruppo</h3>
-        <p class="text-xs text-slate-400">Inserisci il codice del gruppo (es. <code>bioeng</code>, <code>meccanica</code>, <code>phd-polimi</code>):</p>
-      </div>
-
-      <div class="space-y-3">
-        <div>
-          <label class="block text-[11px] font-medium text-slate-400 mb-1">Codice Gruppo</label>
-          <input type="text" id="group-modal-code" placeholder="es. bioeng" class="w-full text-center text-sm font-mono bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 lowercase">
-        </div>
-        <div>
-          <label class="block text-[11px] font-medium text-slate-400 mb-1">Nome Visualizzato (opzionale)</label>
-          <input type="text" id="group-modal-name" placeholder="es. Bioingegneria Lab" class="w-full text-center text-sm bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-        </div>
-        <div>
-          <label class="block text-[11px] font-medium text-slate-400 mb-1">PIN Admin per questo gruppo (se nuovo)</label>
-          <input type="password" id="group-modal-pin" placeholder="es. 1234" maxlength="10" class="w-full text-center text-sm font-mono bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-        </div>
-      </div>
-
-      <div class="flex space-x-2 pt-1">
-        <button type="button" onclick="chiudiModalCambiaGruppo()" class="flex-1 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-300 text-xs font-semibold py-2.5 rounded-xl transition">
-          Annulla
-        </button>
-        <button type="button" onclick="confermaCambioGruppo()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-semibold py-2.5 rounded-xl transition">
-          Vai al Gruppo
         </button>
       </div>
     </div>

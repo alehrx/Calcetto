@@ -761,46 +761,10 @@ function confermaResetClassifica() {
   );
 }
 
-// --- MODAL CAMBIA / CREA GRUPPO ---
-function apriModalCambiaGruppo() {
-  document.getElementById('group-modal-code').value = CURRENT_GROUP_ID === 'global' ? '' : CURRENT_GROUP_ID;
-  document.getElementById('group-modal-name').value = state.group_name || '';
-  document.getElementById('group-modal-pin').value = '';
-  document.getElementById('group-modal').classList.remove('hidden');
-}
-
-function chiudiModalCambiaGruppo() {
-  document.getElementById('group-modal').classList.add('hidden');
-}
-
-function confermaCambioGruppo() {
-  const code = document.getElementById('group-modal-code').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  const name = document.getElementById('group-modal-name').value.trim();
-  const pin = document.getElementById('group-modal-pin').value.trim();
-
-  if (!code) {
-    showToast("Inserisci un codice valido!", "error");
-    return;
-  }
-
-  if (pin) {
-    localStorage.setItem(`pending_pin_${code}`, pin);
-  }
-  if (name) {
-    localStorage.setItem(`pending_name_${code}`, name);
-  }
-
-  const base = `${window.location.origin}${window.location.pathname.replace(/\/v2\/?$/, '/')}`;
-  const param = code === 'global' ? '' : `?group=${encodeURIComponent(code)}`;
-  window.location.href = `${base}${param}`;
-}
-
 function copiaLinkGruppo() {
-  const base = `${window.location.origin}${window.location.pathname.replace(/\/v2\/?$/, '/')}`;
-  const param = CURRENT_GROUP_ID === 'global' ? '' : `?group=${encodeURIComponent(CURRENT_GROUP_ID)}`;
-  const fullUrl = `${base}${param}`;
+  const fullUrl = window.location.href;
   navigator.clipboard.writeText(fullUrl).then(() => {
-    showToast("📋 Link copiato negli appunti! Condividilo con i colleghi.");
+    showToast("📋 Link copiato! Condividilo con i colleghi del team.");
   }).catch(() => {
     prompt("Copia questo link:", fullUrl);
   });
@@ -886,13 +850,13 @@ async function pullFromCloud(showToastFeedback = false) {
           showToast("I dati sono già aggiornati!", "success");
         }
       } else {
-        // Il gruppo non esiste ancora in Supabase: crealo!
-        console.log(`Inizializzazione nuovo gruppo: ${CURRENT_GROUP_ID}`);
-        const pendingPin = localStorage.getItem(`pending_pin_${CURRENT_GROUP_ID}`);
-        const pendingName = localStorage.getItem(`pending_name_${CURRENT_GROUP_ID}`);
-        if (pendingPin) state.admin_pin = pendingPin;
-        if (pendingName) state.group_name = pendingName;
-        await pushToCloud();
+        if (CURRENT_GROUP_ID === 'global') {
+          await pushToCloud();
+        } else {
+          const headerEl = document.getElementById('header-group-name');
+          if (headerEl) headerEl.innerText = "Team Non Trovato";
+          showToast("⚠️ Questo gruppo non esiste! Chiedi all'amministratore di crearlo.", "error");
+        }
       }
     }
   } catch (err) {
