@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Calcio Balilla - Squadre & Elo</title>
+  <title>Calcio Balilla Multi-Team</title>
   
   <!-- PWA Meta Tags -->
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Calcetto">
+  <meta name="apple-mobile-web-app-title" content="Calcetto V2">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
 
@@ -34,7 +34,6 @@
     }
   </script>
   <style>
-    /* Mobile-optimized touch and scroll */
     body {
       -webkit-tap-highlight-color: transparent;
       user-select: none;
@@ -54,13 +53,17 @@
     <div class="flex items-center space-x-2">
       <span class="text-2xl">⚽</span>
       <div>
-        <h1 class="text-lg font-bold tracking-tight text-white leading-tight">Calcio Balilla</h1>
-        <p class="text-xs text-slate-400">Matchmaker & Classifica Elo</p>
+        <h1 class="text-base font-bold tracking-tight text-white leading-tight">Calcio Balilla</h1>
+        <!-- Group Indicator Badge -->
+        <button onclick="apriModalCambiaGruppo()" class="text-xs text-emerald-400 font-semibold flex items-center space-x-1 hover:underline">
+          <span id="header-group-name">Caricamento...</span>
+          <span class="text-[10px] text-slate-500">▼</span>
+        </button>
       </div>
     </div>
     <div id="cloud-status-badge" onclick="pullFromCloud(true)" title="Tocca per sincronizzare" class="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 cursor-pointer active:scale-95 transition">
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-      <span id="cloud-status-text">Cloud Live</span>
+      <span id="cloud-status-text">Live Cloud</span>
       <span class="text-[10px] opacity-70">🔄</span>
     </div>
   </header>
@@ -78,7 +81,7 @@
             <h2 class="font-bold text-white text-base">Chi gioca oggi?</h2>
           </div>
           <span id="count-presenti" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-            0 selezionati
+            0 presenti
           </span>
         </div>
         
@@ -190,7 +193,7 @@
             <span>🏆</span>
             <span>Classifica Elo Globale</span>
           </h2>
-          <p class="text-xs text-slate-400 mt-0.5">
+          <p id="classifica-group-subtitle" class="text-xs text-slate-400 mt-0.5">
             Ranking meritocratico aggiornato in tempo reale (K=40)
           </p>
         </div>
@@ -228,11 +231,37 @@
 
     <!-- ==================== TAB 3: GESTIONE ==================== -->
     <section id="view-gestione" class="space-y-5 hidden">
+      <!-- Group Info & Share Card -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold text-white text-base flex items-center space-x-2">
+            <span>🏷️</span>
+            <span>Gruppo Attivo: <span id="gestione-group-name" class="text-emerald-400"></span></span>
+          </h2>
+          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            Multi-Team
+          </span>
+        </div>
+        <p class="text-xs text-slate-400">
+          Condividi questo link con i colleghi del tuo gruppo per permettere loro di accedere a questa classifica separata:
+        </p>
+
+        <div class="flex space-x-2">
+          <button onclick="copiaLinkGruppo()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-semibold py-2.5 px-3 rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow">
+            <span>📋</span>
+            <span>Copia Link del Gruppo</span>
+          </button>
+          <button onclick="apriModalCambiaGruppo()" class="bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-300 font-medium py-2.5 px-3 rounded-xl text-xs transition">
+            Cambia
+          </button>
+        </div>
+      </div>
+
       <!-- Add New Player Card -->
       <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
         <h2 class="font-bold text-white text-base flex items-center space-x-2">
           <span>➕</span>
-          <span>Aggiungi Nuovo Collega</span>
+          <span>Aggiungi Nuovo Collega al Gruppo</span>
         </h2>
         
         <form id="form-add-player" onsubmit="handleAggiungiGiocatore(event)" class="space-y-3">
@@ -259,7 +288,7 @@
         <div class="flex items-center justify-between">
           <h2 class="font-bold text-white text-base flex items-center space-x-2">
             <span>👥</span>
-            <span>Colleghi Registrati</span>
+            <span>Colleghi del Gruppo</span>
           </h2>
           <span id="total-registered-badge" class="text-xs font-medium text-slate-400">0 colleghi</span>
         </div>
@@ -268,42 +297,19 @@
         </div>
       </div>
 
-      <!-- Cloud Live Multi-Utente Card -->
-      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="font-bold text-white text-base flex items-center space-x-2">
-            <span>☁️</span>
-            <span>Cloud Live Multi-Utente</span>
-          </h2>
-          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Connesso</span>
-          </span>
-        </div>
-        
-        <p class="text-xs text-slate-400 leading-relaxed">
-          Tutti i colleghi possono impostare il proprio <b>ruolo preferito</b>, segnare la <b>presenza</b> e registrare le partite in tempo reale da qualsiasi telefono, senza bisogno di login o token!
-        </p>
-
-        <button onclick="pullFromCloud(true)" class="w-full bg-slate-700/80 hover:bg-slate-700 active:scale-[0.99] text-white font-semibold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center space-x-2">
-          <span>🔄</span>
-          <span>Sincronizza Ora con il Cloud</span>
-        </button>
-      </div>
-
       <!-- Danger Zone / Reset Classifica Card -->
       <div class="bg-rose-950/20 border border-rose-900/40 rounded-2xl p-4 shadow-sm space-y-3">
         <h2 class="font-bold text-rose-400 text-sm flex items-center space-x-2">
           <span>⚠️</span>
-          <span>Azzeramento Classifica</span>
+          <span>Azzeramento Classifica Gruppo</span>
         </h2>
         <p class="text-xs text-slate-400 leading-relaxed">
-          Inizio di una nuova stagione o nuovo torneo? Riporta tutti i punteggi Elo a 1200 e azzera vittorie e sconfitte. I colleghi e i ruoli rimarranno salvati.
+          Inizio di una nuova stagione? Riporta tutti i punteggi Elo a 1200 e azzera vittorie e sconfitte di questo gruppo. Richiede il PIN Amministratore del gruppo.
         </p>
 
         <button onclick="confermaResetClassifica()" class="w-full bg-rose-900/40 hover:bg-rose-800/60 border border-rose-700/60 active:scale-[0.99] text-rose-200 font-semibold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center space-x-2">
           <span>🏆</span>
-          <span>Azzera Classifica Stagionale (Tutti a 1200 pt)</span>
+          <span>Azzera Classifica Stagionale (Richiede PIN)</span>
         </button>
       </div>
     </section>
@@ -338,7 +344,7 @@
       </div>
 
       <div>
-        <input type="password" id="pin-modal-input" placeholder="PIN (default: 0000)" maxlength="10" class="w-full text-center text-lg tracking-widest font-mono bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+        <input type="password" id="pin-modal-input" placeholder="PIN" maxlength="10" class="w-full text-center text-lg tracking-widest font-mono bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
         <p id="pin-modal-error" class="text-[11px] text-rose-400 text-center mt-1.5 hidden">❌ PIN non corretto!</p>
       </div>
 
@@ -348,6 +354,41 @@
         </button>
         <button type="button" onclick="confermaPinModal()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-semibold py-2.5 rounded-xl transition">
           Conferma
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Switch / Create Group Modal -->
+  <div id="group-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-800 border border-slate-700 max-w-xs w-full rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="text-center space-y-1">
+        <span class="text-3xl">🏷️</span>
+        <h3 class="font-bold text-base text-white">Cambia o Crea Gruppo</h3>
+        <p class="text-xs text-slate-400">Inserisci il codice del gruppo (es. <code>bioeng</code>, <code>meccanica</code>, <code>phd-polimi</code>):</p>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">Codice Gruppo</label>
+          <input type="text" id="group-modal-code" placeholder="es. bioeng" class="w-full text-center text-sm font-mono bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 lowercase">
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">Nome Visualizzato (opzionale)</label>
+          <input type="text" id="group-modal-name" placeholder="es. Bioingegneria Lab" class="w-full text-center text-sm bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">PIN Admin per questo gruppo (se nuovo)</label>
+          <input type="password" id="group-modal-pin" placeholder="es. 1234" maxlength="10" class="w-full text-center text-sm font-mono bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+        </div>
+      </div>
+
+      <div class="flex space-x-2 pt-1">
+        <button type="button" onclick="chiudiModalCambiaGruppo()" class="flex-1 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-300 text-xs font-semibold py-2.5 rounded-xl transition">
+          Annulla
+        </button>
+        <button type="button" onclick="confermaCambioGruppo()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-semibold py-2.5 rounded-xl transition">
+          Vai al Gruppo
         </button>
       </div>
     </div>

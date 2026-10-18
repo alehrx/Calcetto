@@ -1,5 +1,5 @@
 // Service Worker per PWA Offline Cache
-const CACHE_NAME = 'calcetto-v6';
+const CACHE_NAME = 'calcetto-v2-final';
 const ASSETS = [
   './',
   './index.html',
@@ -26,6 +26,11 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  // Ignora le chiamate API verso Supabase (devono sempre andare in rete diretta)
+  if (e.request.url.includes('supabase.co')) {
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then((res) => {
       return res || fetch(e.request).catch(() => caches.match('./index.html'));

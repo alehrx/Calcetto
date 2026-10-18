@@ -166,9 +166,9 @@ Per consentire l'utilizzo dell'applicazione a pi\`u gruppi di ricerca, dipartime
     \bottomrule
     \end{tabular}
     \end{center}
-    \item \textbf{Routing via Query String:} L'app in \texttt{/v2/} legge il parametro URL:
-    \[ \texttt{https://harejal.github.io/Calcetto/v2/?group=bioeng} \]
-    Tutte le letture e le scritture REST caricano esclusivamente la riga avente \texttt{id = 'bioeng'}.
+    \item \textbf{Routing via Query String:} L'app legge il parametro URL:
+    \[ \texttt{https://alehrx.github.io/Calcetto/?group=bioeng} \]
+    Tutte le letture e le scritture REST caricano esclusivamente la riga avente \texttt{id = 'bioeng'}. (Se il parametro \`e omesso, carica il gruppo predefinito \texttt{global}).
     \item \textbf{PIN di Amministrazione:} Ciascun gruppo definisce il proprio PIN (memorizzato in \texttt{data.admin\_pin}). Le azioni distruttive (eliminazione giocatori, reset classifica stagionale) sono protette e richiedono l'inserimento del PIN tramite modal personalizzata su mobile.
 \end{itemize}
 

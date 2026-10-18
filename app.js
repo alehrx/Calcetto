@@ -1,79 +1,64 @@
 /**
- * CALCIO BALILLA - WEB APP & ELO ENGINE
- * Standalone client-side application with optional Supabase cloud sync.
+ * CALCIO BALILLA - MULTI-TEAM & ELO ENGINE
+ * Multi-tenant architecture: each group is completely isolated in Supabase.
+ * Default group: 'global' (PhD PoliMi).
  */
 
-// --- DATI PREDEFINITI (Migrati da statistiche.json e presenti.json) ---
-const DEFAULT_PLAYERS = {
-  "Luca": { "ruolo": "Indifferente", "vinte": 1, "perse": 2, "elo": 1177.83 },
-  "Giovanni": { "ruolo": "Indifferente", "vinte": 1, "perse": 0, "elo": 1219.99 },
-  "Alessandro": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1180.0 },
-  "Lorenzo": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1178.85 },
-  "Alex": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1180.0 },
-  "Alexander": { "ruolo": "Difesa", "vinte": 3, "perse": 0, "elo": 1297.22 },
-  "Rafael": { "ruolo": "Indifferente", "vinte": 0, "perse": 2, "elo": 1162.25 },
-  "Chiara": { "ruolo": "Indifferente", "vinte": 2, "perse": 2, "elo": 1161.83 },
-  "Ludovica": { "ruolo": "Indifferente", "vinte": 1, "perse": 1, "elo": 1200.49 },
-  "Lucio": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1238.85 },
-  "Libero": { "ruolo": "Indifferente", "vinte": 1, "perse": 0, "elo": 1221.15 },
-  "Alberto": { "ruolo": "Attaccante", "vinte": 1, "perse": 0, "elo": 1181.15 },
-  "Salvatore": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
-  "Massimo": { "ruolo": "Indifferente", "vinte": 2, "perse": 1, "elo": 1219.86 },
-  "Eden": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 },
-  "Francesco": { "ruolo": "Indifferente", "vinte": 0, "perse": 1, "elo": 1180.55 },
-  "Nicola": { "ruolo": "Indifferente", "vinte": 0, "perse": 0, "elo": 1200 }
-};
+// --- CONFIGURAZIONE GRUPPO & SUPABASE ---
+const SUPABASE_URL = "https://zxdelivduwrbbthflqys.supabase.co";
+const SUPABASE_KEY = "sb_publishable_UOTWumLKxj3hqJ2KMXDn6Q_IpQNdRxI";
 
-const DEFAULT_PRESENTI = [
-  "Ludovica", "Luca", "Chiara", "Alexander", "Massimo", "Rafael", "Giovanni", "Alessandro", "Lorenzo"
-];
+// Rileva il gruppo dall'URL (?group=...) o usa il gruppo predefinito 'global'
+const urlParams = new URLSearchParams(window.location.search);
+let CURRENT_GROUP_ID = (urlParams.get('group') || 'global').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+if (!CURRENT_GROUP_ID) CURRENT_GROUP_ID = 'global';
 
-// --- STATO APPLICAZIONE ---
+const STORAGE_KEY = `calcetto_state_${CURRENT_GROUP_ID}`;
+
+// Stato dell'applicazione
 let state = {
+  group_name: CURRENT_GROUP_ID === 'global' ? "POLIMI PHD" : CURRENT_GROUP_ID.toUpperCase(),
+  admin_pin: CURRENT_GROUP_ID === 'global' ? "0000" : "1234",
   stats: {},
   presenti: [],
   storico_squadre_oggi: [],
   partite_giocate_oggi: {},
-  coppie_giocate_oggi: [] // array of string keys "P1|P2" (sorted)
+  coppie_giocate_oggi: []
 };
 
-const STORAGE_KEY = 'calcetto_state_v1';
-const CLOUD_CONFIG_KEY = 'calcetto_cloud_config';
+let isSyncing = false;
+let lastRemoteUpdatedAt = null;
+let pendingPinAction = null;
 
 // --- INIZIALIZZAZIONE ---
 function initApp() {
-  caricaStato();
+  aggiornaHeaderGruppo();
+  caricaStatoLocale();
   renderAll();
   initCloudLive();
   registerServiceWorker();
 }
 
-function caricaStato() {
+function aggiornaHeaderGruppo() {
+  const headerEl = document.getElementById('header-group-name');
+  const gestioneEl = document.getElementById('gestione-group-name');
+  const subtitleEl = document.getElementById('classifica-group-subtitle');
+  const displayName = state.group_name || (CURRENT_GROUP_ID === 'global' ? "POLIMI PHD" : CURRENT_GROUP_ID.toUpperCase());
+
+  if (headerEl) headerEl.innerText = displayName;
+  if (gestioneEl) gestioneEl.innerText = displayName;
+  if (subtitleEl) subtitleEl.innerText = `Ranking per il gruppo: ${displayName} (K=40)`;
+}
+
+function caricaStatoLocale() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      state = { ...state, ...parsed };
-    } else {
-      state.stats = JSON.parse(JSON.stringify(DEFAULT_PLAYERS));
-      state.presenti = [...DEFAULT_PRESENTI];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      state = { ...state, ...JSON.parse(raw) };
     }
   } catch (e) {
     console.error("Errore caricamento stato locale:", e);
-    state.stats = JSON.parse(JSON.stringify(DEFAULT_PLAYERS));
-    state.presenti = [...DEFAULT_PRESENTI];
   }
-
-  // Assicura che tutti i giocatori abbiano un contatore per oggi
-  Object.keys(state.stats).forEach(g => {
-    if (state.partite_giocate_oggi[g] === undefined) {
-      state.partite_giocate_oggi[g] = 0;
-    }
-  });
-
-  // Filtra presenti per giocatori validi
-  state.presenti = state.presenti.filter(g => state.stats[g]);
 }
 
 function salvaStatoLocale() {
@@ -98,13 +83,9 @@ function switchTab(tabName) {
     }
   });
 
-  if (tabName === 'classifica') {
-    renderClassifica();
-  } else if (tabName === 'gestione') {
-    renderGestione();
-  } else if (tabName === 'partita') {
-    renderPartita();
-  }
+  if (tabName === 'classifica') renderClassifica();
+  else if (tabName === 'gestione') renderGestione();
+  else if (tabName === 'partita') renderPartita();
 }
 
 // --- TOAST NOTIFICATIONS ---
@@ -122,45 +103,19 @@ function showToast(msg, type = 'success') {
 
 // --- RENDERING GENERALE ---
 function renderAll() {
+  aggiornaHeaderGruppo();
   renderPartita();
   renderClassifica();
   renderGestione();
 }
 
 // ==========================================
-// SEZIONE 1: GENERATORE PARTITE & ATTENDANCE
+// SEZIONE 1: GESTIONE PRESENZE & PARTITA
 // ==========================================
 function renderPartita() {
   renderPresentiPills();
-  renderManualMatchDropdowns();
   renderMatchesList();
-}
-
-function renderManualMatchDropdowns() {
-  const ids = ['manual-sq1-p1', 'manual-sq1-p2', 'manual-sq2-p1', 'manual-sq2-p2'];
-  const allNames = Object.keys(state.stats).sort();
-
-  ids.forEach((id, idx) => {
-    const select = document.getElementById(id);
-    if (!select) return;
-    const currentVal = select.value;
-    select.innerHTML = '';
-
-    allNames.forEach(name => {
-      const elo = Math.round(state.stats[name].elo || 1200);
-      const isPresent = state.presenti.includes(name);
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = `${name} (${elo} pt)${isPresent ? ' 🟢' : ''}`;
-      select.appendChild(opt);
-    });
-
-    if (currentVal && allNames.includes(currentVal)) {
-      select.value = currentVal;
-    } else if (allNames[idx]) {
-      select.value = allNames[idx];
-    }
-  });
+  aggiornaDropdownManuali();
 }
 
 function renderPresentiPills() {
@@ -168,38 +123,51 @@ function renderPresentiPills() {
   const countBadge = document.getElementById('count-presenti');
   container.innerHTML = '';
 
-  const allNames = Object.keys(state.stats).sort();
-  countBadge.innerText = `${state.presenti.length} presenti`;
+  const allNames = Object.keys(state.stats || {}).sort();
+  countBadge.innerText = `${(state.presenti || []).length} presenti`;
+
+  if (allNames.length === 0) {
+    container.innerHTML = `
+      <div class="w-full text-center py-4 text-xs text-slate-400">
+        Nessun collega nel gruppo.<br>Vai nella scheda <b>Gestione</b> per aggiungerli!
+      </div>
+    `;
+    return;
+  }
 
   allNames.forEach(name => {
-    const isPresent = state.presenti.includes(name);
+    const isSelected = (state.presenti || []).includes(name);
     const role = state.stats[name].ruolo || 'Indifferente';
-    const roleShort = role === 'Attaccante' ? 'ATT' : role === 'Difesa' ? 'DIF' : 'IND';
-    const matchesToday = state.partite_giocate_oggi[name] || 0;
+    const numPartiteOggi = (state.partite_giocate_oggi || {})[name] || 0;
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.onclick = () => togglePresenza(name);
+    let roleIcon = '⚽';
+    if (role === 'Attaccante') roleIcon = '⚡';
+    else if (role === 'Difesa') roleIcon = '🛡️';
 
-    if (isPresent) {
-      btn.className = 'px-3 py-1.5 rounded-xl text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 flex items-center space-x-1.5 transition active:scale-95';
-    } else {
-      btn.className = 'px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600 flex items-center space-x-1.5 transition active:scale-95';
-    }
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.onclick = () => togglePresenza(name);
+    pill.className = `px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95 ${
+      isSelected
+        ? 'bg-emerald-500 text-white shadow-md shadow-emerald-900/40 ring-1 ring-emerald-400'
+        : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700 hover:text-white'
+    }`;
 
-    btn.innerHTML = `
-      <span class="w-1.5 h-1.5 rounded-full ${isPresent ? 'bg-emerald-400' : 'bg-slate-500'}"></span>
-      <span class="font-semibold">${name}</span>
-      <span class="text-[10px] opacity-70">(${roleShort})</span>
-      ${matchesToday > 0 ? `<span class="bg-slate-900/80 px-1 rounded text-[10px] text-amber-400 font-bold">${matchesToday}</span>` : ''}
+    pill.innerHTML = `
+      <span class="text-[11px] opacity-80">${roleIcon}</span>
+      <span>${name}</span>
+      ${numPartiteOggi > 0 ? `<span class="ml-1 text-[10px] px-1 rounded-full bg-black/25">${numPartiteOggi}</span>` : ''}
     `;
-    container.appendChild(btn);
+
+    container.appendChild(pill);
   });
 }
 
 function togglePresenza(name) {
-  if (state.presenti.includes(name)) {
-    state.presenti = state.presenti.filter(n => n !== name);
+  if (!state.presenti) state.presenti = [];
+  const idx = state.presenti.indexOf(name);
+  if (idx >= 0) {
+    state.presenti.splice(idx, 1);
   } else {
     state.presenti.push(name);
   }
@@ -208,7 +176,7 @@ function togglePresenza(name) {
 }
 
 function selezionaTuttiPresenti() {
-  state.presenti = Object.keys(state.stats);
+  state.presenti = Object.keys(state.stats || {});
   salvaStatoLocale();
   renderPresentiPills();
 }
@@ -239,7 +207,7 @@ function valutaFormazione(sq1, sq2) {
   const key1 = pairKey(sq1[0], sq1[1]);
   const key2 = pairKey(sq2[0], sq2[1]);
 
-  if (state.coppie_giocate_oggi.includes(key1) || state.coppie_giocate_oggi.includes(key2)) {
+  if ((state.coppie_giocate_oggi || []).includes(key1) || (state.coppie_giocate_oggi || []).includes(key2)) {
     penalita += 5000;
   }
 
@@ -247,16 +215,15 @@ function valutaFormazione(sq1, sq2) {
 }
 
 function generaProssimaPartita() {
-  if (state.presenti.length < 4) {
+  if (!state.presenti || state.presenti.length < 4) {
     showToast("Servono almeno 4 colleghi presenti!", "error");
     return;
   }
 
   const usaRanking = document.getElementById('toggle-ranking').checked;
 
-  // Ordina dando priorità a chi ha giocato meno oggi, con casualità nei pari-merito
   const shuffledPresenti = [...state.presenti].sort(() => Math.random() - 0.5);
-  shuffledPresenti.sort((a, b) => (state.partite_giocate_oggi[a] || 0) - (state.partite_giocate_oggi[b] || 0));
+  shuffledPresenti.sort((a, b) => ((state.partite_giocate_oggi || {})[a] || 0) - ((state.partite_giocate_oggi || {})[b] || 0));
 
   const P = shuffledPresenti.slice(0, 4);
   P.sort(() => Math.random() - 0.5);
@@ -289,7 +256,7 @@ function generaProssimaPartita() {
     squadra_b = [P[2], P[3]];
   }
 
-  // Registra coppie oggi
+  if (!state.coppie_giocate_oggi) state.coppie_giocate_oggi = [];
   state.coppie_giocate_oggi.push(pairKey(squadra_a[0], squadra_a[1]));
   state.coppie_giocate_oggi.push(pairKey(squadra_b[0], squadra_b[1]));
 
@@ -302,71 +269,99 @@ function generaProssimaPartita() {
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 
+  if (!state.storico_squadre_oggi) state.storico_squadre_oggi = [];
   state.storico_squadre_oggi.unshift(nuovoMatch);
 
-  // Incrementa partite giocate oggi per i 4 partecipanti
+  if (!state.partite_giocate_oggi) state.partite_giocate_oggi = {};
   [...squadra_a, ...squadra_b].forEach(g => {
     state.partite_giocate_oggi[g] = (state.partite_giocate_oggi[g] || 0) + 1;
   });
 
   salvaStatoLocale();
   renderPartita();
-  showToast("Partita 2 vs 2 generata!");
+  showToast("⚽ Nuova partita generata!");
+}
+
+// --- CREAZIONE PARTITA MANUALE ---
+function aggiornaDropdownManuali() {
+  const selects = ['manual-sq1-p1', 'manual-sq1-p2', 'manual-sq2-p1', 'manual-sq2-p2'];
+  const allNames = Object.keys(state.stats || {}).sort();
+
+  selects.forEach((selId, index) => {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">-- Seleziona --</option>';
+
+    allNames.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = `${name} (${state.stats[name].ruolo || 'Indifferente'})`;
+      sel.appendChild(opt);
+    });
+
+    if (currentVal && allNames.includes(currentVal)) {
+      sel.value = currentVal;
+    } else if (allNames[index]) {
+      sel.value = allNames[index];
+    }
+  });
 }
 
 function creaPartitaManuale() {
-  const p1 = document.getElementById('manual-sq1-p1')?.value;
-  const p2 = document.getElementById('manual-sq1-p2')?.value;
-  const p3 = document.getElementById('manual-sq2-p1')?.value;
-  const p4 = document.getElementById('manual-sq2-p2')?.value;
+  const p1 = document.getElementById('manual-sq1-p1').value;
+  const p2 = document.getElementById('manual-sq1-p2').value;
+  const p3 = document.getElementById('manual-sq2-p1').value;
+  const p4 = document.getElementById('manual-sq2-p2').value;
 
   if (!p1 || !p2 || !p3 || !p4) {
     showToast("Seleziona tutti e 4 i giocatori!", "error");
     return;
   }
 
-  const unique = new Set([p1, p2, p3, p4]);
-  if (unique.size < 4) {
-    showToast("I 4 giocatori devono essere tutti diversi!", "error");
+  const players = [p1, p2, p3, p4];
+  const uniquePlayers = new Set(players);
+  if (uniquePlayers.size !== 4) {
+    showToast("Ogni giocatore può essere scelto una sola volta!", "error");
     return;
   }
 
-  const squadra_a = [p1, p2];
-  const squadra_b = [p3, p4];
-
-  // Registra coppie oggi
-  state.coppie_giocate_oggi.push(pairKey(squadra_a[0], squadra_a[1]));
-  state.coppie_giocate_oggi.push(pairKey(squadra_b[0], squadra_b[1]));
-
   const nuovoMatch = {
     id: 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-    sq1: [squadra_a[0], squadra_a[1]],
-    sq2: [squadra_b[0], squadra_b[1]],
+    sq1: [p1, p2],
+    sq2: [p3, p4],
     risolta: false,
     vincitrice: null,
+    manuale: true,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 
+  if (!state.storico_squadre_oggi) state.storico_squadre_oggi = [];
   state.storico_squadre_oggi.unshift(nuovoMatch);
 
-  // Incrementa contatori partite
-  [...squadra_a, ...squadra_b].forEach(g => {
+  if (!state.partite_giocate_oggi) state.partite_giocate_oggi = {};
+  players.forEach(g => {
     state.partite_giocate_oggi[g] = (state.partite_giocate_oggi[g] || 0) + 1;
   });
 
+  if (!state.coppie_giocate_oggi) state.coppie_giocate_oggi = [];
+  state.coppie_giocate_oggi.push(pairKey(p1, p2));
+  state.coppie_giocate_oggi.push(pairKey(p3, p4));
+
   salvaStatoLocale();
   renderPartita();
-  showToast("⚔️ Sfida manuale creata!");
+  showToast("⚔️ Sfida personalizzata aggiunta!");
 }
 
+// --- GESTIONE MATCH & ELO UPDATE ---
 function renderMatchesList() {
   const container = document.getElementById('matches-container');
-  const countLabel = document.getElementById('session-matches-count');
-  container.innerHTML = '';
+  const countBadge = document.getElementById('session-matches-count');
+  const matches = state.storico_squadre_oggi || [];
 
-  countLabel.innerText = `${state.storico_squadre_oggi.length} partite`;
+  countBadge.innerText = `${matches.length} partite`;
 
-  if (state.storico_squadre_oggi.length === 0) {
+  if (matches.length === 0) {
     container.innerHTML = `
       <div class="bg-slate-800/40 border border-slate-700/40 rounded-xl p-6 text-center text-slate-400 text-sm">
         Nessuna partita generata in questa sessione.<br>Seleziona almeno 4 colleghi e premi il tasto verde!
@@ -375,139 +370,144 @@ function renderMatchesList() {
     return;
   }
 
-  state.storico_squadre_oggi.forEach(match => {
-    const elo1_a = Math.round(state.stats[match.sq1[0]]?.elo || 1200);
-    const elo1_b = Math.round(state.stats[match.sq1[1]]?.elo || 1200);
-    const mediaSq1 = Math.round((elo1_a + elo1_b) / 2);
+  container.innerHTML = '';
+  matches.forEach((m, idx) => {
+    const eloSq1 = Math.round(((state.stats[m.sq1[0]]?.elo || 1200) + (state.stats[m.sq1[1]]?.elo || 1200)) / 2);
+    const eloSq2 = Math.round(((state.stats[m.sq2[0]]?.elo || 1200) + (state.stats[m.sq2[1]]?.elo || 1200)) / 2);
 
-    const elo2_a = Math.round(state.stats[match.sq2[0]]?.elo || 1200);
-    const elo2_b = Math.round(state.stats[match.sq2[1]]?.elo || 1200);
-    const mediaSq2 = Math.round((elo2_a + elo2_b) / 2);
+    const matchCard = document.createElement('div');
+    matchCard.className = `rounded-2xl border p-4 shadow-md transition ${
+      !m.risolta
+        ? 'bg-slate-800 border-slate-700 ring-1 ring-emerald-500/20'
+        : 'bg-slate-900/60 border-slate-800 opacity-80'
+    }`;
 
-    const card = document.createElement('div');
-    card.className = 'bg-slate-800/90 border border-slate-700 rounded-2xl p-4 shadow-md space-y-3';
-
-    card.innerHTML = `
-      <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-700/60 pb-2">
-        <span class="font-medium">Match ore ${match.timestamp || ''}</span>
-        ${match.risolta 
-          ? `<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30">Conclusa</span>`
-          : `<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-semibold border border-amber-500/30">In corso...</span>`
-        }
+    matchCard.innerHTML = `
+      <div class="flex items-center justify-between text-xs text-slate-400 mb-3 border-b border-slate-700/50 pb-2">
+        <div class="flex items-center space-x-1.5">
+          <span class="font-bold text-white">#${matches.length - idx}</span>
+          ${m.manuale ? '<span class="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.2 rounded font-medium">Manuale</span>' : ''}
+          <span>• ${m.timestamp || ''}</span>
+        </div>
+        ${m.risolta 
+          ? `<span class="text-emerald-400 font-semibold flex items-center space-x-1">
+               <span>✓ Risolta (${m.vincitrice === 1 ? 'Squadra 1' : 'Squadra 2'})</span>
+             </span>`
+          : '<span class="text-amber-400 font-semibold animate-pulse">In corso</span>'}
       </div>
 
       <!-- Teams Display -->
-      <div class="grid grid-cols-2 gap-2 text-xs">
-        <div class="p-2.5 rounded-xl bg-blue-950/40 border ${match.vincitrice === 1 ? 'border-amber-400/80 bg-amber-500/10' : 'border-blue-500/30'}">
-          <div class="flex justify-between items-center text-blue-400 font-bold mb-1">
-            <span>🔵 SQUADRA 1</span>
-            <span class="text-[11px] font-normal">${mediaSq1} pt</span>
+      <div class="grid grid-cols-2 gap-3 text-center my-2">
+        <!-- Squadra 1 (Blu) -->
+        <div class="bg-blue-950/30 border border-blue-500/20 rounded-xl p-3 flex flex-col justify-between ${m.vincitrice === 1 ? 'ring-2 ring-emerald-400 bg-emerald-950/30' : ''}">
+          <div>
+            <div class="text-[11px] font-bold text-blue-400 uppercase tracking-wider mb-1 flex items-center justify-center space-x-1">
+              <span>🔵</span> <span>Squadra 1</span>
+            </div>
+            <div class="font-bold text-sm text-white">${m.sq1[0]}</div>
+            <div class="font-bold text-sm text-white">${m.sq1[1]}</div>
           </div>
-          <div class="text-slate-200 font-medium">${match.sq1[0]} <span class="text-slate-400 text-[10px]">(${elo1_a})</span></div>
-          <div class="text-slate-200 font-medium">${match.sq1[1]} <span class="text-slate-400 text-[10px]">(${elo1_b})</span></div>
+          <div class="text-[11px] text-slate-400 mt-2 pt-1 border-t border-blue-500/20">
+            Elo Medio: <b class="text-blue-300">${eloSq1}</b>
+          </div>
         </div>
 
-        <div class="p-2.5 rounded-xl bg-rose-950/40 border ${match.vincitrice === 2 ? 'border-amber-400/80 bg-amber-500/10' : 'border-rose-500/30'}">
-          <div class="flex justify-between items-center text-rose-400 font-bold mb-1">
-            <span>🔴 SQUADRA 2</span>
-            <span class="text-[11px] font-normal">${mediaSq2} pt</span>
+        <!-- Squadra 2 (Rossa) -->
+        <div class="bg-rose-950/30 border border-rose-500/20 rounded-xl p-3 flex flex-col justify-between ${m.vincitrice === 2 ? 'ring-2 ring-emerald-400 bg-emerald-950/30' : ''}">
+          <div>
+            <div class="text-[11px] font-bold text-rose-400 uppercase tracking-wider mb-1 flex items-center justify-center space-x-1">
+              <span>🔴</span> <span>Squadra 2</span>
+            </div>
+            <div class="font-bold text-sm text-white">${m.sq2[0]}</div>
+            <div class="font-bold text-sm text-white">${m.sq2[1]}</div>
           </div>
-          <div class="text-slate-200 font-medium">${match.sq2[0]} <span class="text-slate-400 text-[10px]">(${elo2_a})</span></div>
-          <div class="text-slate-200 font-medium">${match.sq2[1]} <span class="text-slate-400 text-[10px]">(${elo2_b})</span></div>
+          <div class="text-[11px] text-slate-400 mt-2 pt-1 border-t border-rose-500/20">
+            Elo Medio: <b class="text-rose-300">${eloSq2}</b>
+          </div>
         </div>
       </div>
 
-      <!-- Actions -->
-      ${!match.risolta ? `
-        <div class="grid grid-cols-3 gap-2 pt-1">
-          <button onclick="registraVittoria('${match.id}', 1)" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold py-2 px-1 rounded-xl text-xs transition flex items-center justify-center space-x-1 shadow">
-            <span>🏆</span>
-            <span>Vince Sq. 1</span>
+      <!-- Actions / Winner Selector -->
+      ${!m.risolta ? `
+        <div class="grid grid-cols-2 gap-2 mt-3 pt-2">
+          <button onclick="registraVittoria('${m.id}', 1)" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-2 px-3 rounded-xl text-xs transition shadow flex items-center justify-center space-x-1">
+            <span>🏆</span> <span>Vince Squadra 1</span>
           </button>
-          <button onclick="registraVittoria('${match.id}', 2)" class="bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-semibold py-2 px-1 rounded-xl text-xs transition flex items-center justify-center space-x-1 shadow">
-            <span>🏆</span>
-            <span>Vince Sq. 2</span>
-          </button>
-          <button onclick="scartaPartita('${match.id}')" class="bg-slate-700/80 hover:bg-slate-700 text-slate-300 active:scale-95 py-2 px-1 rounded-xl text-xs transition flex items-center justify-center space-x-1">
-            <span>❌</span>
-            <span>Scarta</span>
+          <button onclick="registraVittoria('${m.id}', 2)" class="bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold py-2 px-3 rounded-xl text-xs transition shadow flex items-center justify-center space-x-1">
+            <span>🏆</span> <span>Vince Squadra 2</span>
           </button>
         </div>
       ` : `
-        <div class="text-xs text-center font-semibold text-emerald-400 bg-emerald-500/10 py-1.5 rounded-lg border border-emerald-500/20">
-          🏆 Ha vinto la <b>${match.vincitrice === 1 ? 'Squadra 1 (Blu)' : 'Squadra 2 (Rossa)'}</b>! Elo aggiornato.
+        <div class="mt-2 pt-2 flex justify-end">
+          <button onclick="annullaRisultatoMatch('${m.id}')" class="text-xs text-slate-500 hover:text-slate-300 underline transition">
+            Elimina questa partita
+          </button>
         </div>
       `}
     `;
 
-    container.appendChild(card);
+    container.appendChild(matchCard);
   });
 }
 
-// --- CALCOLO VITTORIA & AGGIORNAMENTO ELO ---
-function registraVittoria(matchId, squadraVincente) {
-  const match = state.storico_squadre_oggi.find(m => m.id === matchId);
+function calcolaNuovoEloCoppie(squadraVincente, squadraPerdente, K = 40) {
+  const eloA = (state.stats[squadraVincente[0]].elo + state.stats[squadraVincente[1]].elo) / 2;
+  const eloB = (state.stats[squadraPerdente[0]].elo + state.stats[squadraPerdente[1]].elo) / 2;
+
+  const expectedA = 1 / (1 + Math.pow(10, (eloB - eloA) / 400));
+  const expectedB = 1 / (1 + Math.pow(10, (eloA - eloB) / 400));
+
+  const deltaA = K * (1 - expectedA);
+  const deltaB = K * (0 - expectedB);
+
+  return { deltaA, deltaB };
+}
+
+function registraVittoria(matchId, vincitriceNum) {
+  const match = (state.storico_squadre_oggi || []).find(m => m.id === matchId);
   if (!match || match.risolta) return;
 
+  const sqVincente = vincitriceNum === 1 ? match.sq1 : match.sq2;
+  const sqPerdente = vincitriceNum === 1 ? match.sq2 : match.sq1;
+
+  const { deltaA, deltaB } = calcolaNuovoEloCoppie(sqVincente, sqPerdente, 40);
+
+  sqVincente.forEach(name => {
+    state.stats[name].vinte = (state.stats[name].vinte || 0) + 1;
+    state.stats[name].elo = (state.stats[name].elo || 1200) + deltaA;
+  });
+
+  sqPerdente.forEach(name => {
+    state.stats[name].perse = (state.stats[name].perse || 0) + 1;
+    state.stats[name].elo = Math.max(100, (state.stats[name].elo || 1200) + deltaB);
+  });
+
   match.risolta = true;
-  match.vincitrice = squadraVincente;
-
-  const vincenti = squadraVincente === 1 ? match.sq1 : match.sq2;
-  const perdenti = squadraVincente === 1 ? match.sq2 : match.sq1;
-
-  // Calcolo Elo
-  const K = 40;
-  const elo_v = (state.stats[vincenti[0]].elo + state.stats[vincenti[1]].elo) / 2;
-  const elo_p = (state.stats[perdenti[0]].elo + state.stats[perdenti[1]].elo) / 2;
-
-  const prob_v = 1 / (1 + Math.pow(10, (elo_p - elo_v) / 400));
-  const prob_p = 1 / (1 + Math.pow(10, (elo_v - elo_p) / 400));
-
-  const delta_v = K * (1 - prob_v);
-  const delta_p = K * (0 - prob_p);
-
-  vincenti.forEach(g => {
-    state.stats[g].elo += delta_v;
-    state.stats[g].vinte = (state.stats[g].vinte || 0) + 1;
-  });
-
-  perdenti.forEach(g => {
-    state.stats[g].elo += delta_p;
-    state.stats[g].perse = (state.stats[g].perse || 0) + 1;
-  });
+  match.vincitrice = vincitriceNum;
+  match.deltaElo = Math.round(deltaA);
 
   salvaStatoLocale();
-  renderMatchesList();
-  showToast(`Vittoria registrata! Elo: +${delta_v.toFixed(1)} / ${delta_p.toFixed(1)} pt`);
+  renderAll();
+  showToast(`🏆 Vittoria registrata! (+${Math.round(deltaA)} Elo per i vincitori)`);
 }
 
-function scartaPartita(matchId) {
-  const idx = state.storico_squadre_oggi.findIndex(m => m.id === matchId);
-  if (idx === -1) return;
-
-  const match = state.storico_squadre_oggi[idx];
-  [...match.sq1, ...match.sq2].forEach(g => {
-    state.partite_giocate_oggi[g] = Math.max(0, (state.partite_giocate_oggi[g] || 0) - 1);
-  });
-
-  const k1 = pairKey(match.sq1[0], match.sq1[1]);
-  const k2 = pairKey(match.sq2[0], match.sq2[1]);
-  state.coppie_giocate_oggi = state.coppie_giocate_oggi.filter(k => k !== k1 && k !== k2);
-
-  state.storico_squadre_oggi.splice(idx, 1);
-
-  salvaStatoLocale();
-  renderPartita();
-  showToast("Partita scartata");
+function annullaRisultatoMatch(matchId) {
+  const idx = (state.storico_squadre_oggi || []).findIndex(m => m.id === matchId);
+  if (idx >= 0) {
+    state.storico_squadre_oggi.splice(idx, 1);
+    salvaStatoLocale();
+    renderAll();
+    showToast("Partita rimossa dallo storico");
+  }
 }
 
 function confermaAzzeraSessione() {
-  if (confirm("Vuoi azzerare le partite e le rotazioni di oggi? La classifica generale Elo NON verrà toccata.")) {
+  if (confirm("Vuoi azzerare il contatore delle partite e la rotazione di oggi?")) {
     state.storico_squadre_oggi = [];
+    state.partite_giocate_oggi = {};
     state.coppie_giocate_oggi = [];
-    Object.keys(state.partite_giocate_oggi).forEach(g => state.partite_giocate_oggi[g] = 0);
     salvaStatoLocale();
-    renderPartita();
+    renderAll();
     showToast("Sessione odierna azzerata!");
   }
 }
@@ -516,7 +516,7 @@ function confermaAzzeraSessione() {
 // SEZIONE 2: CLASSIFICA ELO & PODIO
 // ==========================================
 function renderClassifica() {
-  const allNames = Object.keys(state.stats);
+  const allNames = Object.keys(state.stats || {});
   const list = allNames.map(name => {
     const s = state.stats[name];
     const totali = (s.vinte || 0) + (s.perse || 0);
@@ -537,13 +537,11 @@ function renderClassifica() {
   const attivi = list.filter(p => p.totali > 0);
   const inattivi = list.filter(p => p.totali === 0);
 
-  // Podio Top 3
   const podiumContainer = document.getElementById('podium-container');
   podiumContainer.innerHTML = '';
 
   if (attivi.length >= 1) {
-    const top3 = [attivi[1], attivi[0], attivi[2]]; // ordine visuale: 2° (sx), 1° (centro), 3° (dx)
-    const positions = [2, 1, 3];
+    const top3 = [attivi[1], attivi[0], attivi[2]];
     const medals = ["🥈", "🥇", "🥉"];
     const colors = [
       "border-slate-400 bg-slate-800/80 text-slate-200",
@@ -567,7 +565,6 @@ function renderClassifica() {
     });
   }
 
-  // Lista Giocatori Attivi
   const rankedList = document.getElementById('ranked-list');
   const countBadge = document.getElementById('active-players-count');
   rankedList.innerHTML = '';
@@ -576,7 +573,7 @@ function renderClassifica() {
   if (attivi.length === 0) {
     rankedList.innerHTML = `
       <div class="p-6 text-center text-slate-400 text-xs">
-        Nessuna vittoria ancora registrata. Gioca la prima partita per scalare il ranking!
+        Nessuna partita ancora registrata in questo gruppo.
       </div>
     `;
   } else {
@@ -606,7 +603,6 @@ function renderClassifica() {
     });
   }
 
-  // Sezione Inattivi
   const inactiveCard = document.getElementById('inactive-card');
   const inactiveList = document.getElementById('inactive-players-list');
   if (inattivi.length > 0) {
@@ -618,39 +614,45 @@ function renderClassifica() {
 }
 
 // ==========================================
-// SEZIONE 3: GESTIONE GIOCATORI & DATABASE
+// SEZIONE 3: GESTIONE GIOCATORI & SICUREZZA PIN
 // ==========================================
 function renderGestione() {
+  aggiornaHeaderGruppo();
   const container = document.getElementById('gestione-players-list');
-  const totalBadge = document.getElementById('total-registered-badge');
+  const countBadge = document.getElementById('total-registered-badge');
+  const allNames = Object.keys(state.stats || {}).sort();
+
+  countBadge.innerText = `${allNames.length} colleghi`;
   container.innerHTML = '';
 
-  const names = Object.keys(state.stats).sort();
-  totalBadge.innerText = `${names.length} colleghi`;
+  if (allNames.length === 0) {
+    container.innerHTML = '<div class="text-xs text-slate-400 text-center py-4">Nessun collega presente in questo gruppo.</div>';
+    return;
+  }
 
-  names.forEach(name => {
-    const p = state.stats[name];
-    const row = document.createElement('div');
-    row.className = 'flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-slate-700/60 text-xs';
+  allNames.forEach(name => {
+    const s = state.stats[name];
+    const item = document.createElement('div');
+    item.className = "flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-700/60";
 
-    row.innerHTML = `
+    item.innerHTML = `
       <div class="flex items-center space-x-2">
         <span class="font-bold text-sm text-white">${name}</span>
-        <select onchange="cambiaRuolo('${name}', this.value)" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200">
-          <option value="Indifferente" ${p.ruolo === 'Indifferente' ? 'selected' : ''}>Indifferente</option>
-          <option value="Attaccante" ${p.ruolo === 'Attaccante' ? 'selected' : ''}>Attaccante</option>
-          <option value="Difesa" ${p.ruolo === 'Difesa' ? 'selected' : ''}>Difesa</option>
-        </select>
+        <span class="text-xs text-emerald-400 font-mono">(${Math.round(s.elo || 1200)} pt)</span>
       </div>
-
       <div class="flex items-center space-x-2">
-        <span class="text-slate-400 font-mono">${Math.round(p.elo || 1200)} pt</span>
-        <button onclick="rimuoviGiocatore('${name}')" class="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 transition" title="Elimina">
+        <select onchange="aggiornaRuoloGiocatore('${name}', this.value)" class="text-xs bg-slate-800 border border-slate-700 rounded-lg p-1 text-slate-300 focus:outline-none focus:border-emerald-500">
+          <option value="Indifferente" ${s.ruolo === 'Indifferente' ? 'selected' : ''}>Indifferente</option>
+          <option value="Attaccante" ${s.ruolo === 'Attaccante' ? 'selected' : ''}>Attaccante</option>
+          <option value="Difesa" ${s.ruolo === 'Difesa' ? 'selected' : ''}>Difesa</option>
+        </select>
+        <button onclick="richiediEliminazioneGiocatore('${name}')" title="Elimina giocatore" class="p-1 rounded-lg text-rose-400 hover:text-white hover:bg-rose-500/20 active:scale-95 transition">
           🗑️
         </button>
       </div>
     `;
-    container.appendChild(row);
+
+    container.appendChild(item);
   });
 }
 
@@ -659,138 +661,163 @@ function handleAggiungiGiocatore(e) {
   const input = document.getElementById('input-new-name');
   const roleSelect = document.getElementById('select-new-role');
   const name = input.value.trim();
+  const role = roleSelect.value;
 
   if (!name) return;
 
-  if (state.stats[name]) {
-    showToast(`"${name}" è già registrato!`, "error");
+  if (state.stats && state.stats[name]) {
+    showToast(`Il collega ${name} è già registrato!`, "error");
     return;
   }
 
+  if (!state.stats) state.stats = {};
   state.stats[name] = {
-    ruolo: roleSelect.value,
+    elo: 1200,
     vinte: 0,
     perse: 0,
-    elo: 1200
+    ruolo: role
   };
-
-  state.partite_giocate_oggi[name] = 0;
-  if (!state.presenti.includes(name)) {
-    state.presenti.push(name);
-  }
 
   input.value = '';
   salvaStatoLocale();
   renderAll();
-  showToast(`${name} aggiunto con successo!`);
+  showToast(`✅ ${name} aggiunto con successo!`);
 }
 
-function cambiaRuolo(name, nuovoRuolo) {
-  if (state.stats[name]) {
-    state.stats[name].ruolo = nuovoRuolo;
+function aggiornaRuoloGiocatore(name, newRole) {
+  if (state.stats && state.stats[name]) {
+    state.stats[name].ruolo = newRole;
     salvaStatoLocale();
     renderAll();
     showToast(`Ruolo di ${name} aggiornato`);
   }
 }
 
-// --- PIN AMMINISTRATORE (Per azioni distruttive: reset classifica o eliminazione collega) ---
-const ADMIN_PIN = "0000";
-let pendingPinAction = null;
-
-function richiediPin(titolo, desc, onConfirm) {
-  pendingPinAction = onConfirm;
-  const titleEl = document.getElementById('pin-modal-title');
-  const descEl = document.getElementById('pin-modal-desc');
-  const inputEl = document.getElementById('pin-modal-input');
-  const errorEl = document.getElementById('pin-modal-error');
-  const modalEl = document.getElementById('pin-modal');
-
-  if (titleEl) titleEl.innerText = titolo;
-  if (descEl) descEl.innerText = desc;
-  if (inputEl) inputEl.value = '';
-  if (errorEl) errorEl.classList.add('hidden');
-  if (modalEl) modalEl.classList.remove('hidden');
-  if (inputEl) inputEl.focus();
+// --- MODAL PIN SICUREZZA ---
+function richiediPin(titolo, desc, callback) {
+  pendingPinAction = callback;
+  document.getElementById('pin-modal-title').innerText = titolo || "PIN Amministratore";
+  document.getElementById('pin-modal-desc').innerText = desc || "Inserisci il PIN per confermare l'operazione:";
+  const input = document.getElementById('pin-modal-input');
+  input.value = '';
+  document.getElementById('pin-modal-error').classList.add('hidden');
+  document.getElementById('pin-modal').classList.remove('hidden');
+  setTimeout(() => input.focus(), 100);
 }
 
 function chiudiPinModal() {
-  const modalEl = document.getElementById('pin-modal');
-  if (modalEl) modalEl.classList.add('hidden');
+  document.getElementById('pin-modal').classList.add('hidden');
   pendingPinAction = null;
 }
 
 function confermaPinModal() {
-  const inputEl = document.getElementById('pin-modal-input');
-  const errorEl = document.getElementById('pin-modal-error');
-  const modalEl = document.getElementById('pin-modal');
-  const pin = inputEl ? inputEl.value.trim() : '';
+  const pinInserito = document.getElementById('pin-modal-input').value.trim();
+  const pinCorretto = state.admin_pin || (CURRENT_GROUP_ID === 'global' ? "0000" : "1234");
 
-  if (pin === ADMIN_PIN) {
-    if (modalEl) modalEl.classList.add('hidden');
+  if (pinInserito === pinCorretto) {
+    document.getElementById('pin-modal').classList.add('hidden');
     if (typeof pendingPinAction === 'function') {
       const action = pendingPinAction;
       pendingPinAction = null;
       action();
     }
   } else {
-    if (errorEl) errorEl.classList.remove('hidden');
+    document.getElementById('pin-modal-error').classList.remove('hidden');
   }
 }
 
-function rimuoviGiocatore(name) {
-  richiediPin("Elimina Collega", `Sei sicuro di voler eliminare definitivamente ${name} dal database?`, () => {
-    delete state.stats[name];
-    delete state.partite_giocate_oggi[name];
-    state.presenti = state.presenti.filter(g => g !== name);
-    salvaStatoLocale();
-    renderAll();
-    showToast(`${name} eliminato`);
-  });
+function richiediEliminazioneGiocatore(name) {
+  richiediPin(
+    "Elimina Giocatore",
+    `Inserisci il PIN per eliminare definitivamente ${name}:`,
+    () => {
+      delete state.stats[name];
+      state.presenti = (state.presenti || []).filter(g => g !== name);
+      salvaStatoLocale();
+      renderAll();
+      showToast(`🗑️ ${name} eliminato`);
+    }
+  );
 }
 
-// --- AZZERA CLASSIFICA STAGIONALE (PROTETTA DA PIN) ---
 function confermaResetClassifica() {
-  richiediPin("Azzera Classifica", "Tutti i punteggi Elo torneranno a 1200 e le vittorie a 0.", () => {
-    Object.keys(state.stats).forEach(name => {
-      state.stats[name].elo = 1200;
-      state.stats[name].vinte = 0;
-      state.stats[name].perse = 0;
-    });
+  richiediPin(
+    "Azzera Stagione",
+    "Stai per azzerare tutti i punti Elo del gruppo a 1200. Inserisci il PIN:",
+    () => {
+      Object.keys(state.stats || {}).forEach(name => {
+        state.stats[name].vinte = 0;
+        state.stats[name].perse = 0;
+        state.stats[name].elo = 1200;
+      });
+      state.storico_squadre_oggi = [];
+      state.partite_giocate_oggi = {};
+      state.coppie_giocate_oggi = [];
 
-    state.storico_squadre_oggi = [];
-    state.coppie_giocate_oggi = [];
-    Object.keys(state.partite_giocate_oggi).forEach(g => {
-      state.partite_giocate_oggi[g] = 0;
-    });
+      salvaStatoLocale();
+      renderAll();
+      showToast("🏆 Classifica del gruppo azzerata a 1200 pt!");
+    }
+  );
+}
 
-    salvaStatoLocale();
-    renderAll();
-    showToast("Classifica stagionale azzerata! Tutti a 1200 pt.");
+// --- MODAL CAMBIA / CREA GRUPPO ---
+function apriModalCambiaGruppo() {
+  document.getElementById('group-modal-code').value = CURRENT_GROUP_ID === 'global' ? '' : CURRENT_GROUP_ID;
+  document.getElementById('group-modal-name').value = state.group_name || '';
+  document.getElementById('group-modal-pin').value = '';
+  document.getElementById('group-modal').classList.remove('hidden');
+}
+
+function chiudiModalCambiaGruppo() {
+  document.getElementById('group-modal').classList.add('hidden');
+}
+
+function confermaCambioGruppo() {
+  const code = document.getElementById('group-modal-code').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const name = document.getElementById('group-modal-name').value.trim();
+  const pin = document.getElementById('group-modal-pin').value.trim();
+
+  if (!code) {
+    showToast("Inserisci un codice valido!", "error");
+    return;
+  }
+
+  if (pin) {
+    localStorage.setItem(`pending_pin_${code}`, pin);
+  }
+  if (name) {
+    localStorage.setItem(`pending_name_${code}`, name);
+  }
+
+  const base = `${window.location.origin}${window.location.pathname.replace(/\/v2\/?$/, '/')}`;
+  const param = code === 'global' ? '' : `?group=${encodeURIComponent(code)}`;
+  window.location.href = `${base}${param}`;
+}
+
+function copiaLinkGruppo() {
+  const base = `${window.location.origin}${window.location.pathname.replace(/\/v2\/?$/, '/')}`;
+  const param = CURRENT_GROUP_ID === 'global' ? '' : `?group=${encodeURIComponent(CURRENT_GROUP_ID)}`;
+  const fullUrl = `${base}${param}`;
+  navigator.clipboard.writeText(fullUrl).then(() => {
+    showToast("📋 Link copiato negli appunti! Condividilo con i colleghi.");
+  }).catch(() => {
+    prompt("Copia questo link:", fullUrl);
   });
 }
 
 // ==========================================
-// SEZIONE 4: CLOUD SYNC LIVE (SUPABASE)
+// SEZIONE 4: CLOUD SYNC MULTI-TENANT (SUPABASE)
 // ==========================================
-const SUPABASE_URL = "https://zxdelivduwrbbthflqys.supabase.co";
-const SUPABASE_KEY = "sb_publishable_UOTWumLKxj3hqJ2KMXDn6Q_IpQNdRxI";
-
-let isSyncing = false;
-let lastRemoteUpdatedAt = null;
-
 function initCloudLive() {
-  // Pull iniziale immediato
   pullFromCloud();
 
-  // Polling automatico ogni 8 secondi in background
   setInterval(() => {
     if (!document.hidden) {
       pullFromCloud();
     }
   }, 8000);
 
-  // Quando un collega sblocca il telefono o torna sulla pagina, ricarica subito
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
       pullFromCloud();
@@ -805,7 +832,7 @@ async function pushToCloud() {
     lastRemoteUpdatedAt = now;
     const endpoint = `${SUPABASE_URL}/rest/v1/calcetto_state`;
     const payload = {
-      id: 'global',
+      id: CURRENT_GROUP_ID,
       data: state,
       updated_at: now
     };
@@ -827,7 +854,7 @@ async function pushToCloud() {
 
 async function pullFromCloud(showToastFeedback = false) {
   try {
-    const endpoint = `${SUPABASE_URL}/rest/v1/calcetto_state?id=eq.global&select=data,updated_at`;
+    const endpoint = `${SUPABASE_URL}/rest/v1/calcetto_state?id=eq.${encodeURIComponent(CURRENT_GROUP_ID)}&select=data,updated_at`;
     const res = await fetch(endpoint, {
       headers: {
         'apikey': SUPABASE_KEY,
@@ -839,21 +866,33 @@ async function pullFromCloud(showToastFeedback = false) {
       const rows = await res.json();
       if (rows && rows.length > 0 && rows[0].data) {
         const remote = rows[0];
-        if (remote.data && remote.data.stats && typeof remote.data.stats === 'object' && Object.keys(remote.data.stats).length > 0) {
-          if (!lastRemoteUpdatedAt || remote.updated_at !== lastRemoteUpdatedAt) {
-            lastRemoteUpdatedAt = remote.updated_at;
-            isSyncing = true;
-            state = { ...state, ...remote.data };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            renderAll();
-            isSyncing = false;
-            if (showToastFeedback) {
-              showToast("Classifica aggiornata dal Cloud!", "success");
-            }
-          } else if (showToastFeedback) {
-            showToast("I dati sono già sincronizzati!", "success");
+        if (!lastRemoteUpdatedAt || remote.updated_at !== lastRemoteUpdatedAt) {
+          lastRemoteUpdatedAt = remote.updated_at;
+          isSyncing = true;
+          state = { ...state, ...remote.data };
+          if (!state.group_name) {
+            state.group_name = CURRENT_GROUP_ID === 'global' ? "POLIMI PHD" : CURRENT_GROUP_ID.toUpperCase();
           }
+          if (!state.admin_pin) {
+            state.admin_pin = CURRENT_GROUP_ID === 'global' ? "0000" : "1234";
+          }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          renderAll();
+          isSyncing = false;
+          if (showToastFeedback) {
+            showToast("Dati sincronizzati con il Cloud!", "success");
+          }
+        } else if (showToastFeedback) {
+          showToast("I dati sono già aggiornati!", "success");
         }
+      } else {
+        // Il gruppo non esiste ancora in Supabase: crealo!
+        console.log(`Inizializzazione nuovo gruppo: ${CURRENT_GROUP_ID}`);
+        const pendingPin = localStorage.getItem(`pending_pin_${CURRENT_GROUP_ID}`);
+        const pendingName = localStorage.getItem(`pending_name_${CURRENT_GROUP_ID}`);
+        if (pendingPin) state.admin_pin = pendingPin;
+        if (pendingName) state.group_name = pendingName;
+        await pushToCloud();
       }
     }
   } catch (err) {
@@ -873,5 +912,4 @@ function registerServiceWorker() {
   }
 }
 
-// Avvio
 window.addEventListener('DOMContentLoaded', initApp);
