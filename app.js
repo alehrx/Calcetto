@@ -621,19 +621,34 @@ function cambiaRuolo(name, nuovoRuolo) {
   }
 }
 
+// --- PIN AMMINISTRATORE (Per azioni distruttive: reset classifica o eliminazione collega) ---
+const ADMIN_PIN = "0000";
+
 function rimuoviGiocatore(name) {
-  if (confirm(`Sei sicuro di voler eliminare ${name} dalla classifica permanente?`)) {
-    delete state.stats[name];
-    delete state.partite_giocate_oggi[name];
-    state.presenti = state.presenti.filter(g => g !== name);
-    salvaStatoLocale();
-    renderAll();
-    showToast(`${name} rimosso`);
+  const pin = prompt(`🔒 Inserisci il PIN Amministratore per eliminare ${name}:`);
+  if (pin === null) return;
+  if (pin.trim() !== ADMIN_PIN) {
+    showToast("❌ PIN errato! Operazione annullata.", "error");
+    return;
   }
+
+  delete state.stats[name];
+  delete state.partite_giocate_oggi[name];
+  state.presenti = state.presenti.filter(g => g !== name);
+  salvaStatoLocale();
+  renderAll();
+  showToast(`${name} rimosso dal database`);
 }
 
-// --- AZZERA CLASSIFICA STAGIONALE ---
+// --- AZZERA CLASSIFICA STAGIONALE (PROTETTA DA PIN) ---
 function confermaResetClassifica() {
+  const pin = prompt("🔒 Inserisci il PIN Amministratore per azzerare la classifica stagionale:");
+  if (pin === null) return;
+  if (pin.trim() !== ADMIN_PIN) {
+    showToast("❌ PIN errato! Azzeramento classifica bloccato.", "error");
+    return;
+  }
+
   const confermato = confirm(
     "⚠️ SEI SICURO DI VOLER AZZERARE LA CLASSIFICA?\n\n" +
     "• Tutti i colleghi torneranno a 1200 punti Elo base.\n" +
