@@ -1,0 +1,204 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{geometry}
+\geometry{top=2.5cm,bottom=2.5cm,left=2.5cm,right=2.5cm}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning,fit,backgrounds}
+
+\setlength{\headheight}{14pt}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    citecolor=blue!70!black,
+    urlcolor=teal!70!black
+}
+
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{blue!80!black}\bfseries,
+    commentstyle=\color{gray},
+    stringstyle=\color{teal},
+    backgroundcolor=\color{gray!8},
+    frame=single,
+    rulecolor=\color{gray!30},
+    breaklines=true,
+    showstringspaces=false
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\bfseries Calcetto App - Architettura \& Documentazione}
+\lhead{Politecnico di Milano}
+\cfoot{\thepage}
+
+\title{\Huge \textbf{Calcetto Web App - Architettura, Algoritmi e Guida allo Sviluppo}\\
+\Large \textit{Sistema Multi-Piattaforma PWA con Motore Elo e Sincronizzazione Cloud Supabase}}
+\author{\textbf{Alessandro Harej} \\ Politecnico di Milano}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Questo documento tecnico descrive l'architettura, i principi matematici, la struttura dei dati e le procedure operative alla base della web application \textbf{Calcetto} sviluppata per la gestione delle leghe di calcio balilla. Viene documentata la migrazione completa dall'originaria implementazione monolitica in Python/Streamlit a un'architettura disaccoppiata client-serverless basata su Progressive Web Application (PWA) statica (ospitata gratuitamente su GitHub Pages) e un database cloud PostgreSQL relazionale (gestito tramite Supabase). Vengono inoltre dettagliate le formulazioni dell'algoritmo di matchmaking combinatorio, il sistema di rating Elo con coefficiente di volatilit\`a $K=40$, la gestione multi-gruppo (multi-tenant) e le istruzioni operative per manutenzioni e aggiornamenti futuri.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduzione e Diagnosi del Sistema Legacy}
+
+\subsection{L'Implementazione Streamlit Originale}
+L'applicazione era inizialmente concepita come uno script Python monolitico (\texttt{app.py}) eseguito su Streamlit Community Cloud. La persistenza dei dati avveniva attraverso un file JSON (\texttt{statistiche.json}) salvato direttamente nel repository GitHub. A ogni conclusione di partita o modifica dei presenti:
+\begin{enumerate}
+    \item L'applicazione serializzava l'intero dizionario delle statistiche in formato JSON.
+    \item Tramite la libreria \texttt{PyGithub} e un Personal Access Token (PAT), veniva effettuato un commit Git programmatico direttamente sul branch \texttt{main} del repository.
+\end{enumerate}
+
+\subsection{Criticit\`a Riscontrate}
+\begin{itemize}
+    \item \textbf{Continuous Deployment Loop:} Streamlit Community Cloud monitora i commit sul repository di riferimento. Ogni commit inviato da \texttt{PyGithub} innescava automaticamente il riavvio del container e la ricompilazione dello script.
+    \item \textbf{Azzeramento dello Stato (\texttt{st.session\_state}):} Il riavvio del container causava la perdita istantanea delle variabili in memoria, costringendo i giocatori sul campo a ricaricare la pagina e perdendo la partita corrente in corso.
+    \item \textbf{Concorrenza e Race Conditions:} Qualora due utenti inviassero contemporaneamente i risultati o modificassero le presenze, Git sollevava eccezioni di conflitto di merge (\textit{Fast-Forward Conflict}), causando il crash dell'app.
+    \item \textbf{Tempi di Avvio e Cold Starts:} L'avvio dell'istanza Python richiedeva diversi secondi (spesso oltre 10-15s), rendendo l'esperienza utente da smartphone poco adatta a un uso rapido in pausa pranzo.
+\end{itemize}
+
+\section{Nuova Architettura Serverless \& Mobile-First}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=1.8cm, auto]
+    \node [rectangle, draw=blue!60, fill=blue!5, rounded corners, minimum width=3.5cm, minimum height=1.2cm, text centered, align=center] (phone) {\textbf{Smartphone Client}\\(PWA / Safari / Chrome)};
+    \node [rectangle, draw=purple!60, fill=purple!5, rounded corners, minimum width=3.5cm, minimum height=1.2cm, right=3.2cm of phone, text centered, align=center] (gh) {\textbf{GitHub Pages}\\(Hosting Statico CDN)};
+    \node [rectangle, draw=green!60, fill=green!5, rounded corners, minimum width=3.5cm, minimum height=1.2cm, below=2cm of phone, text centered, align=center] (local) {\textbf{LocalStorage}\\(Offline First)};
+    \node [rectangle, draw=orange!60, fill=orange!5, rounded corners, minimum width=3.8cm, minimum height=1.2cm, below=2cm of gh, text centered, align=center] (sb) {\textbf{Supabase Cloud}\\(PostgreSQL + PostgREST)};
+
+    \draw [<->, thick] (phone) -- node[above] {Assets (HTML/JS)} (gh);
+    \draw [<->, thick] (phone) -- node[left] {Read/Write} (local);
+    \draw [<->, thick] (phone) -- node[below, sloped] {REST API (8s Polling)} (sb);
+\end{tikzpicture}
+\caption{Diagramma del flusso architetturale della nuova applicazione.}
+\label{fig:arch}
+\end{figure}
+
+L'architettura \`e stata rifattorizzata separando nettamente il livello di presentazione dal livello di persistenza:
+\begin{enumerate}
+    \item \textbf{Frontend (Client-side):} Realizzato in HTML5 semantico, TailwindCSS (tramite CDN per una grafica scura, moderna e reattiva su schermi di qualsiasi dimensione) e Vanilla JavaScript (\texttt{app.js}). Non richiede build pipeline complesse (n\'e Node.js, n\'e Webpack).
+    \item \textbf{Hosting Statico (GitHub Pages):} Gratuito, distribuito su CDN globale con certificato SSL automatico e tempi di caricamento istantanei ($<200$ ms).
+    \item \textbf{Storage e Database (Supabase Cloud):} Database PostgreSQL con API RESTful istantanee generate da PostgREST. La sincronizzazione avviene tramite protocollo HTTP/JSON mediante \texttt{fetch} asincrono.
+    \item \textbf{Offline-First \& PWA Support:} Un Service Worker (\texttt{sw.js}) memorizza nella cache del browser i componenti dell'interfaccia. Tramite il file \texttt{manifest.json}, l'app pu\`o essere installata sulla schermata home dello smartphone come fosse un'applicazione nativa senza barre del browser.
+\end{enumerate}
+
+\section{Modello Matematico e Algoritmi}
+
+\subsection{Sistema di Rating Elo per Squadre 2v2}
+Il sistema adotta l'algoritmo Elo standard applicato alle competizioni a coppie, calcolando il punteggio medio di ciascuna formazione.
+
+Dati due giocatori della Squadra A con rating $R_{A1}$ e $R_{A2}$, e due della Squadra B con rating $R_{B1}$ e $R_{B2}$, i rating aggregati sono definiti come:
+\begin{equation}
+R_A = \frac{R_{A1} + R_{A2}}{2}, \qquad R_B = \frac{R_{B1} + R_{B2}}{2}
+\end{equation}
+
+La probabilit\`a attesa di vittoria della Squadra A ($E_A$) e della Squadra B ($E_B$) \`e calcolata secondo la funzione logistica standard:
+\begin{equation}
+E_A = \frac{1}{1 + 10^{(R_B - R_A)/400}}, \qquad E_B = \frac{1}{1 + 10^{(R_A - R_B)/400}} = 1 - E_A
+\end{equation}
+
+\subsubsection{Fattore di Sviluppo \texorpdfstring{$K=40$}{K=40}}
+Al termine del match, indicando con $S_A \in \{1, 0\}$ l'esito per la Squadra A (1 per vittoria, 0 per sconfitta):
+\begin{equation}
+\Delta R_A = K \cdot (S_A - E_A)
+\end{equation}
+\begin{equation}
+R'_{A1} = R_{A1} + \Delta R_A, \qquad R'_{A2} = R_{A2} + \Delta R_A
+\end{equation}
+
+\paragraph{Significato del valore $K=40$:}
+Nelle federazioni scacchistiche (FIDE), $K$ varia tipicamente tra 10 e 20 per giocatori stabili, e 40 solo per principianti. Nel contesto del calcetto universitario e aziendale:
+\begin{itemize}
+    \item Il numero totale di partite giocate in un anno \`e ridotto (spesso 1-3 partite al giorno per giocatore).
+    \item Con un $K$ basso (es. 15), battere i campioni del torneo produrrebbe un avanzamento trascurabile ($+3$ o $+5$ punti), rendendo la classifica statica e noiosa.
+    \item Con $K=40$, una vittoria contro una squadra nettamente favorita assegna circa $+30$/$+35$ punti, mentre una vittoria contro sfavoriti assegna circa $+8$/$+12$ punti. Ci\`o garantisce dinamismo, competizione e ricompense percepibili partita per partita.
+\end{itemize}
+
+\subsection{Algoritmo di Matchmaking e Generazione Equa}
+Per garantire rotazione equilibrata e formazioni avvincenti:
+\begin{enumerate}
+    \item \textbf{Priorit\`a di Partecipazione:} I presenti vengono ordinati in base al numero di partite giocate nella sessione corrente (\texttt{partite\_giocate\_oggi}). I 4 colleghi con il minor numero di partite vengono scelti prioritariamente.
+    \item \textbf{Valutazione delle Combinazioni (se Ranking attivo):}
+    Dati i 4 candidati scelti $\{P_0, P_1, P_2, P_3\}$, esistono esattamente tre possibili accoppiamenti 2v2:
+    \[ C_1: [P_0, P_1] \text{ vs } [P_2, P_3], \quad C_2: [P_0, P_2] \text{ vs } [P_1, P_3], \quad C_3: [P_0, P_3] \text{ vs } [P_1, P_2] \]
+    L'algoritmo valuta una funzione di penalit\`a $J(C_k)$ per ciascuna configurazione:
+    \begin{equation}
+    J(C_k) = |R_{\text{sq1}} - R_{\text{sq2}}| + \text{Pen}_{\text{ruoli}} + \text{Pen}_{\text{ripetizione}}
+    \end{equation}
+    dove:
+    \begin{itemize}
+        \item $\text{Pen}_{\text{ruoli}} = +500$ se una squadra ha 2 Difensori puri, $+150$ se ha 2 Attaccanti puri.
+        \item $\text{Pen}_{\text{ripetizione}} = +5000$ se la coppia ha gi\`a giocato insieme nella stessa giornata.
+    \end{itemize}
+    Viene selezionata la combinazione che minimizza $J(C_k)$.
+\end{enumerate}
+
+\section{Architettura Multi-Gruppo (Versione V2)}
+
+Per consentire l'utilizzo dell'applicazione a pi\`u gruppi di ricerca, dipartimenti o uffici diversi senza condividere o sovrascrivere le statistiche:
+\begin{itemize}
+    \item \textbf{Struttura Tabella Supabase (\texttt{calcetto\_state}):}
+    \begin{center}
+    \begin{tabular}{lll}
+    \toprule
+    \textbf{Colonna} & \textbf{Tipo} & \textbf{Descrizione} \\
+    \midrule
+    \texttt{id} & \texttt{text (PK)} & Identificativo gruppo (es. \texttt{global}, \texttt{bioeng}) \\
+    \texttt{data} & \texttt{jsonb} & Stato completo (giocatori, presenze, match, PIN) \\
+    \texttt{updated\_at} & \texttt{timestamptz} & Timestamp dell'ultima modifica (gestione concorrenza) \\
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \item \textbf{Routing via Query String:} L'app in \texttt{/v2/} legge il parametro URL:
+    \[ \texttt{https://harejal.github.io/Calcetto/v2/?group=bioeng} \]
+    Tutte le letture e le scritture REST caricano esclusivamente la riga avente \texttt{id = 'bioeng'}.
+    \item \textbf{PIN di Amministrazione:} Ciascun gruppo definisce il proprio PIN (memorizzato in \texttt{data.admin\_pin}). Le azioni distruttive (eliminazione giocatori, reset classifica stagionale) sono protette e richiedono l'inserimento del PIN tramite modal personalizzata su mobile.
+\end{itemize}
+
+\section{Strumenti di Amministrazione da PC}
+
+Nel repository sono inclusi due script Python da riga di comando per il super-amministratore (eseguibili tramite l'interprete Anaconda presente sul PC):
+\begin{enumerate}
+    \item \texttt{resetClassifica.py}: Script che si collega a Supabase e azzera l'Elo stagionale riportando tutti a 1200 punti senza eliminare i nominativi e i ruoli.
+    \item \texttt{gestioneTeam.py} (e il relativo lanciatore \texttt{gestisci\_team.bat}): Script interattivo che elenca tutti i team registrati nel Cloud, permette di ispezionare le singole classifiche, azzerare singoli team o cancellare definitivamente un team dal database.
+\end{enumerate}
+
+\section{Automazione Keepalive (GitHub Actions)}
+I piani gratuiti di Supabase mettono in pausa automatica i database inattivi per pi\`u di 7 giorni consecutivi. Per garantire continuit\`a durante le vacanze o i periodi di esami, \`e stato implementato il workflow:
+\[ \texttt{.github/workflows/keepalive.yml} \]
+Il workflow esegue un \texttt{curl} con query minima (\texttt{limit=1}) ogni 3 giorni alle 08:00 UTC, mantenendo il database costantemente attivo senza alcun intervento manuale.
+
+\section{Guida Operativa per Sviluppi Futuri}
+
+\subsection{Struttura delle Cartelle}
+\begin{itemize}
+    \item \texttt{index.html}, \texttt{app.js}, \texttt{sw.js}, \texttt{manifest.json}: Versione di produzione (gruppo PHD principale).
+    \item \texttt{v2/}: Versione multi-gruppo per gli altri team universitari.
+    \item \texttt{gestioneTeam.py}, \texttt{resetClassifica.py}: Strumenti di gestione lato amministratore.
+    \item \texttt{.github/workflows/}: Automazioni CI/CD e keepalive.
+\end{itemize}
+
+\subsection{Best Practices per le Modifiche al Codice}
+\begin{enumerate}
+    \item \textbf{Invalida la Cache del Service Worker:} Se modifichi \texttt{app.js} o l'interfaccia HTML, incrementa la versione della stringa \texttt{CACHE\_NAME} in \texttt{sw.js} (es. da \texttt{calcetto-v1.3} a \texttt{calcetto-v1.4}). In questo modo, gli smartphone degli utenti scaricheranno automaticamente l'aggiornamento alla prima apertura.
+    \item \textbf{Preserva la Struttura JSON:} Quando aggiungi nuovi campi all'oggetto \texttt{state}, assicurati di impostare valori di default nel caso in cui un utente abbia in cache una versione precedente del JSON locale.
+\end{enumerate}
+
+\end{document}

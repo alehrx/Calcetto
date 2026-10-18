@@ -1,6 +1,14 @@
-# Script di amministrazione locale
+# Script di amministrazione locale (solo su PC)
 resetClassifica.py
 howToCommit.py
+gestioneTeam.py
+gestisci_team.bat
+
+# File temporanei LaTeX
+*.aux
+*.log
+*.out
+*.toc
 
 # File di sistema
 __pycache__/
