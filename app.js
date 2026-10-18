@@ -623,40 +623,62 @@ function cambiaRuolo(name, nuovoRuolo) {
 
 // --- PIN AMMINISTRATORE (Per azioni distruttive: reset classifica o eliminazione collega) ---
 const ADMIN_PIN = "0000";
+let pendingPinAction = null;
+
+function richiediPin(titolo, desc, onConfirm) {
+  pendingPinAction = onConfirm;
+  const titleEl = document.getElementById('pin-modal-title');
+  const descEl = document.getElementById('pin-modal-desc');
+  const inputEl = document.getElementById('pin-modal-input');
+  const errorEl = document.getElementById('pin-modal-error');
+  const modalEl = document.getElementById('pin-modal');
+
+  if (titleEl) titleEl.innerText = titolo;
+  if (descEl) descEl.innerText = desc;
+  if (inputEl) inputEl.value = '';
+  if (errorEl) errorEl.classList.add('hidden');
+  if (modalEl) modalEl.classList.remove('hidden');
+  if (inputEl) inputEl.focus();
+}
+
+function chiudiPinModal() {
+  const modalEl = document.getElementById('pin-modal');
+  if (modalEl) modalEl.classList.add('hidden');
+  pendingPinAction = null;
+}
+
+function confermaPinModal() {
+  const inputEl = document.getElementById('pin-modal-input');
+  const errorEl = document.getElementById('pin-modal-error');
+  const modalEl = document.getElementById('pin-modal');
+  const pin = inputEl ? inputEl.value.trim() : '';
+
+  if (pin === ADMIN_PIN) {
+    if (modalEl) modalEl.classList.add('hidden');
+    if (typeof pendingPinAction === 'function') {
+      const action = pendingPinAction;
+      pendingPinAction = null;
+      action();
+    }
+  } else {
+    if (errorEl) errorEl.classList.remove('hidden');
+  }
+}
 
 function rimuoviGiocatore(name) {
-  const pin = prompt(`🔒 Inserisci il PIN Amministratore per eliminare ${name}:`);
-  if (pin === null) return;
-  if (pin.trim() !== ADMIN_PIN) {
-    showToast("❌ PIN errato! Operazione annullata.", "error");
-    return;
-  }
-
-  delete state.stats[name];
-  delete state.partite_giocate_oggi[name];
-  state.presenti = state.presenti.filter(g => g !== name);
-  salvaStatoLocale();
-  renderAll();
-  showToast(`${name} rimosso dal database`);
+  richiediPin("Elimina Collega", `Sei sicuro di voler eliminare definitivamente ${name} dal database?`, () => {
+    delete state.stats[name];
+    delete state.partite_giocate_oggi[name];
+    state.presenti = state.presenti.filter(g => g !== name);
+    salvaStatoLocale();
+    renderAll();
+    showToast(`${name} eliminato`);
+  });
 }
 
 // --- AZZERA CLASSIFICA STAGIONALE (PROTETTA DA PIN) ---
 function confermaResetClassifica() {
-  const pin = prompt("🔒 Inserisci il PIN Amministratore per azzerare la classifica stagionale:");
-  if (pin === null) return;
-  if (pin.trim() !== ADMIN_PIN) {
-    showToast("❌ PIN errato! Azzeramento classifica bloccato.", "error");
-    return;
-  }
-
-  const confermato = confirm(
-    "⚠️ SEI SICURO DI VOLER AZZERARE LA CLASSIFICA?\n\n" +
-    "• Tutti i colleghi torneranno a 1200 punti Elo base.\n" +
-    "• Vittorie e sconfitte saranno azzerate a 0.\n" +
-    "• I nomi e i ruoli preferiti rimarranno intatti."
-  );
-
-  if (confermato) {
+  richiediPin("Azzera Classifica", "Tutti i punteggi Elo torneranno a 1200 e le vittorie a 0.", () => {
     Object.keys(state.stats).forEach(name => {
       state.stats[name].elo = 1200;
       state.stats[name].vinte = 0;
@@ -672,7 +694,7 @@ function confermaResetClassifica() {
     salvaStatoLocale();
     renderAll();
     showToast("Classifica stagionale azzerata! Tutti a 1200 pt.");
-  }
+  });
 }
 
 // --- BACKUP & EXPORT JSON ---
@@ -733,11 +755,13 @@ function initCloudLive() {
 async function pushToCloud() {
   if (isSyncing) return;
   try {
+    const now = new Date().toISOString();
+    lastRemoteUpdatedAt = now;
     const endpoint = `${SUPABASE_URL}/rest/v1/calcetto_state`;
     const payload = {
       id: 'global',
       data: state,
-      updated_at: new Date().toISOString()
+      updated_at: now
     };
 
     await fetch(endpoint, {
@@ -769,18 +793,20 @@ async function pullFromCloud(showToastFeedback = false) {
       const rows = await res.json();
       if (rows && rows.length > 0 && rows[0].data) {
         const remote = rows[0];
-        if (!lastRemoteUpdatedAt || remote.updated_at !== lastRemoteUpdatedAt) {
-          lastRemoteUpdatedAt = remote.updated_at;
-          isSyncing = true;
-          state = { ...state, ...remote.data };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          renderAll();
-          isSyncing = false;
-          if (showToastFeedback) {
-            showToast("Classifica aggiornata dal Cloud!", "success");
+        if (remote.data && remote.data.stats && typeof remote.data.stats === 'object' && Object.keys(remote.data.stats).length > 0) {
+          if (!lastRemoteUpdatedAt || remote.updated_at !== lastRemoteUpdatedAt) {
+            lastRemoteUpdatedAt = remote.updated_at;
+            isSyncing = true;
+            state = { ...state, ...remote.data };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            renderAll();
+            isSyncing = false;
+            if (showToastFeedback) {
+              showToast("Classifica aggiornata dal Cloud!", "success");
+            }
+          } else if (showToastFeedback) {
+            showToast("I dati sono già sincronizzati!", "success");
           }
-        } else if (showToastFeedback) {
-          showToast("I dati sono già sincronizzati!", "success");
         }
       }
     }
