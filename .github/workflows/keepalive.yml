@@ -1,0 +1,20 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Esegue ogni 3 giorni alle 08:00 UTC (circa le 09:00/10:00 italiane)
+    - cron: '0 8 */3 * *'
+  workflow_dispatch: # Permette di avviare il ping manualmente dalla scheda Actions di GitHub
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database
+        run: |
+          echo "Sending keepalive ping to Supabase..."
+          curl -s -f -X GET "https://zxdelivduwrbbthflqys.supabase.co/rest/v1/calcetto_state?select=id&limit=1" \
+            -H "apikey: sb_publishable_UOTWumLKxj3hqJ2KMXDn6Q_IpQNdRxI" \
+            -H "Authorization: Bearer sb_publishable_UOTWumLKxj3hqJ2KMXDn6Q_IpQNdRxI"
+          echo ""
+          echo "Ping completed successfully! Database is active."
