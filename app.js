@@ -132,7 +132,35 @@ function renderAll() {
 // ==========================================
 function renderPartita() {
   renderPresentiPills();
+  renderManualMatchDropdowns();
   renderMatchesList();
+}
+
+function renderManualMatchDropdowns() {
+  const ids = ['manual-sq1-p1', 'manual-sq1-p2', 'manual-sq2-p1', 'manual-sq2-p2'];
+  const allNames = Object.keys(state.stats).sort();
+
+  ids.forEach((id, idx) => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const currentVal = select.value;
+    select.innerHTML = '';
+
+    allNames.forEach(name => {
+      const elo = Math.round(state.stats[name].elo || 1200);
+      const isPresent = state.presenti.includes(name);
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = `${name} (${elo} pt)${isPresent ? ' 🟢' : ''}`;
+      select.appendChild(opt);
+    });
+
+    if (currentVal && allNames.includes(currentVal)) {
+      select.value = currentVal;
+    } else if (allNames[idx]) {
+      select.value = allNames[idx];
+    }
+  });
 }
 
 function renderPresentiPills() {
@@ -284,6 +312,51 @@ function generaProssimaPartita() {
   salvaStatoLocale();
   renderPartita();
   showToast("Partita 2 vs 2 generata!");
+}
+
+function creaPartitaManuale() {
+  const p1 = document.getElementById('manual-sq1-p1')?.value;
+  const p2 = document.getElementById('manual-sq1-p2')?.value;
+  const p3 = document.getElementById('manual-sq2-p1')?.value;
+  const p4 = document.getElementById('manual-sq2-p2')?.value;
+
+  if (!p1 || !p2 || !p3 || !p4) {
+    showToast("Seleziona tutti e 4 i giocatori!", "error");
+    return;
+  }
+
+  const unique = new Set([p1, p2, p3, p4]);
+  if (unique.size < 4) {
+    showToast("I 4 giocatori devono essere tutti diversi!", "error");
+    return;
+  }
+
+  const squadra_a = [p1, p2];
+  const squadra_b = [p3, p4];
+
+  // Registra coppie oggi
+  state.coppie_giocate_oggi.push(pairKey(squadra_a[0], squadra_a[1]));
+  state.coppie_giocate_oggi.push(pairKey(squadra_b[0], squadra_b[1]));
+
+  const nuovoMatch = {
+    id: 'm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+    sq1: [squadra_a[0], squadra_a[1]],
+    sq2: [squadra_b[0], squadra_b[1]],
+    risolta: false,
+    vincitrice: null,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  };
+
+  state.storico_squadre_oggi.unshift(nuovoMatch);
+
+  // Incrementa contatori partite
+  [...squadra_a, ...squadra_b].forEach(g => {
+    state.partite_giocate_oggi[g] = (state.partite_giocate_oggi[g] || 0) + 1;
+  });
+
+  salvaStatoLocale();
+  renderPartita();
+  showToast("⚔️ Sfida manuale creata!");
 }
 
 function renderMatchesList() {

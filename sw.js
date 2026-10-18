@@ -1,5 +1,5 @@
 // Service Worker per PWA Offline Cache
-const CACHE_NAME = 'calcetto-v4';
+const CACHE_NAME = 'calcetto-v5';
 const ASSETS = [
   './',
   './index.html',
