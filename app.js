@@ -567,6 +567,149 @@ function confermaAzzeraSessione() {
   }
 }
 
+let openPlayerDetails = new Set();
+
+function sanitizeId(str) {
+  return encodeURIComponent(str || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function ottieniTuttePartiteArchiviate() {
+  const lista = [];
+  const ids = new Set();
+
+  (state.storico_partite || []).forEach(m => {
+    if (m && m.id && !ids.has(m.id)) {
+      ids.add(m.id);
+      lista.push(m);
+    }
+  });
+
+  (state.storico_squadre_oggi || []).forEach(m => {
+    if (m && m.risolta && m.id && !ids.has(m.id)) {
+      ids.add(m.id);
+      lista.push({
+        id: m.id,
+        timestamp: Date.now(),
+        data: new Date().toLocaleDateString('it-IT'),
+        ora: m.timestamp || '',
+        sq1: [...(m.sq1 || [])],
+        sq2: [...(m.sq2 || [])],
+        vincitrice: m.vincitrice,
+        deltaElo: m.deltaElo || 20
+      });
+    }
+  });
+
+  return lista;
+}
+
+function calcolaPartnerEOpponente(targetPlayer) {
+  const allMatches = ottieniTuttePartiteArchiviate();
+  const partners = {};
+  const opponents = {};
+
+  allMatches.forEach(m => {
+    if (!m.sq1 || !m.sq2 || !m.vincitrice) return;
+
+    const inSq1 = (m.sq1 || []).includes(targetPlayer);
+    const inSq2 = (m.sq2 || []).includes(targetPlayer);
+    if (!inSq1 && !inSq2) return;
+
+    const mySq = inSq1 ? m.sq1 : m.sq2;
+    const oppSq = inSq1 ? m.sq2 : m.sq1;
+    const iWon = (inSq1 && m.vincitrice === 1) || (inSq2 && m.vincitrice === 2);
+
+    const partner = mySq.find(p => p !== targetPlayer);
+    if (partner) {
+      if (!partners[partner]) partners[partner] = { vinte: 0, perse: 0, giocate: 0 };
+      partners[partner].giocate += 1;
+      if (iWon) partners[partner].vinte += 1;
+      else partners[partner].perse += 1;
+    }
+
+    oppSq.forEach(opp => {
+      if (!opponents[opp]) opponents[opp] = { vinte: 0, perse: 0, giocate: 0 };
+      opponents[opp].giocate += 1;
+      if (iWon) opponents[opp].vinte += 1;
+      else opponents[opp].perse += 1;
+    });
+  });
+
+  let migliorPartner = null;
+  const pKeys = Object.keys(partners);
+  if (pKeys.length > 0) {
+    pKeys.sort((a, b) => {
+      const pa = partners[a];
+      const pb = partners[b];
+      // Formula bayesiana (Laplace smoothing) per bilanciare win rate e numero di partite
+      const scoreA = (pa.vinte + 1) / (pa.giocate + 2);
+      const scoreB = (pb.vinte + 1) / (pb.giocate + 2);
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      if (pb.vinte !== pa.vinte) return pb.vinte - pa.vinte;
+      return pb.giocate - pa.giocate;
+    });
+    const bestP = partners[pKeys[0]];
+    const wr = Math.round((bestP.vinte / bestP.giocate) * 100);
+    migliorPartner = {
+      nome: pKeys[0],
+      dettaglio: `${bestP.vinte}V - ${bestP.perse}P (${wr}%)`
+    };
+  }
+
+  let peggiorOpponente = null;
+  const oKeys = Object.keys(opponents);
+  if (oKeys.length > 0) {
+    oKeys.sort((a, b) => {
+      const oa = opponents[a];
+      const ob = opponents[b];
+      // 1. Maggior numero di sconfitte subite
+      if (ob.perse !== oa.perse) return ob.perse - oa.perse;
+      // 2. Minor tasso di successo contro di lui
+      const wrA = oa.vinte / oa.giocate;
+      const wrB = ob.vinte / ob.giocate;
+      if (wrA !== wrB) return wrA - wrB;
+      return ob.giocate - oa.giocate;
+    });
+    const worstO = opponents[oKeys[0]];
+    if (worstO.perse > 0) {
+      peggiorOpponente = {
+        nome: oKeys[0],
+        dettaglio: `${worstO.perse} ${worstO.perse === 1 ? 'sconfitta subita' : 'sconfitte subite'} (${worstO.vinte}V - ${worstO.perse}P)`
+      };
+    } else {
+      peggiorOpponente = {
+        nome: oKeys[0],
+        dettaglio: `Imbattuto! (${worstO.vinte}V - 0P)`
+      };
+    }
+  }
+
+  return {
+    migliorPartner: migliorPartner || { nome: "Nessuno ancora", dettaglio: "Poche partite" },
+    peggiorOpponente: peggiorOpponente || { nome: "Nessuno ancora", dettaglio: "Poche partite" }
+  };
+}
+
+function toggleDettaglioClassifica(nome) {
+  const sId = sanitizeId(nome);
+  const el = document.getElementById(`stats-detail-${sId}`);
+  const chevron = document.getElementById(`chevron-${sId}`);
+
+  if (openPlayerDetails.has(nome)) {
+    openPlayerDetails.delete(nome);
+    if (el) el.classList.add('hidden');
+    if (chevron) {
+      chevron.classList.remove('rotate-180', 'text-emerald-400');
+    }
+  } else {
+    openPlayerDetails.add(nome);
+    if (el) el.classList.remove('hidden');
+    if (chevron) {
+      chevron.classList.add('rotate-180', 'text-emerald-400');
+    }
+  }
+}
+
 // ==========================================
 // SEZIONE 2: CLASSIFICA ELO & PODIO
 // ==========================================
@@ -634,24 +777,62 @@ function renderClassifica() {
   } else {
     attivi.forEach((p, i) => {
       const pos = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+      const sId = sanitizeId(p.nome);
+      const isOpen = openPlayerDetails.has(p.nome);
+      const stats = calcolaPartnerEOpponente(p.nome);
+
       rankedList.innerHTML += `
-        <div class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/30 transition">
-          <div class="flex items-center space-x-3">
-            <span class="font-bold text-sm text-slate-300 w-6">${pos}</span>
-            <div>
-              <div class="font-bold text-sm text-white flex items-center space-x-1.5">
-                <span>${p.nome}</span>
-                <span class="text-[10px] font-normal px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">${p.ruolo}</span>
-              </div>
-              <div class="text-xs text-slate-400 mt-0.5">
-                Vinte: <b class="text-emerald-400">${p.vinte}</b> | Perse: <b class="text-rose-400">${p.perse}</b> 
-                (${p.winRate.toFixed(1)}% Win Rate)
+        <div class="border-b border-slate-700/40 last:border-b-0">
+          <div onclick="toggleDettaglioClassifica('${p.nome.replace(/'/g, "\\'")}')" title="Tocca per vedere miglior partner e peggior opponente" class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/30 active:bg-slate-700/60 transition cursor-pointer select-none">
+            <div class="flex items-center space-x-3">
+              <span class="font-bold text-sm text-slate-300 w-6">${pos}</span>
+              <div>
+                <div class="font-bold text-sm text-white flex items-center space-x-1.5">
+                  <span>${p.nome}</span>
+                  <span class="text-[10px] font-normal px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">${p.ruolo}</span>
+                </div>
+                <div class="text-xs text-slate-400 mt-0.5">
+                  Vinte: <b class="text-emerald-400">${p.vinte}</b> | Perse: <b class="text-rose-400">${p.perse}</b> 
+                  (${p.winRate.toFixed(1)}% WR)
+                </div>
               </div>
             </div>
+            <div class="text-right flex items-center space-x-2.5">
+              <div>
+                <span class="text-base font-extrabold text-emerald-400">${Math.round(p.elo)}</span>
+                <span class="text-xs text-slate-400 block -mt-1">punti</span>
+              </div>
+              <span id="chevron-${sId}" class="text-slate-400 text-xs transition-transform duration-200 ${isOpen ? 'rotate-180 text-emerald-400' : ''}">▼</span>
+            </div>
           </div>
-          <div class="text-right">
-            <span class="text-base font-extrabold text-emerald-400">${Math.round(p.elo)}</span>
-            <span class="text-xs text-slate-400 block -mt-1">punti</span>
+
+          <!-- Dettaglio Sotto il Nome: Miglior Partner & Peggior Opponente -->
+          <div id="stats-detail-${sId}" class="${isOpen ? '' : 'hidden'} px-4 pb-3 pt-1 bg-slate-900/50 border-t border-slate-800">
+            <div class="grid grid-cols-2 gap-2 text-xs mt-1">
+              <!-- Miglior Partner -->
+              <div class="bg-emerald-950/25 border border-emerald-500/20 rounded-xl p-2.5 flex flex-col justify-between">
+                <div>
+                  <div class="text-[10px] uppercase font-bold text-emerald-400 flex items-center space-x-1">
+                    <span>🤝</span>
+                    <span>Miglior Partner</span>
+                  </div>
+                  <div class="font-bold text-white text-xs mt-1 truncate">${stats.migliorPartner.nome}</div>
+                </div>
+                <div class="text-[11px] text-emerald-300 font-medium mt-1">${stats.migliorPartner.dettaglio}</div>
+              </div>
+
+              <!-- Peggior Opponente -->
+              <div class="bg-rose-950/25 border border-rose-500/20 rounded-xl p-2.5 flex flex-col justify-between">
+                <div>
+                  <div class="text-[10px] uppercase font-bold text-rose-400 flex items-center space-x-1">
+                    <span>😈</span>
+                    <span>Peggior Opponente</span>
+                  </div>
+                  <div class="font-bold text-white text-xs mt-1 truncate">${stats.peggiorOpponente.nome}</div>
+                </div>
+                <div class="text-[11px] text-rose-300 font-medium mt-1">${stats.peggiorOpponente.dettaglio}</div>
+              </div>
+            </div>
           </div>
         </div>
       `;
