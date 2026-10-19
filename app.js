@@ -8,22 +8,23 @@
 const SUPABASE_URL = "https://zxdelivduwrbbthflqys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_UOTWumLKxj3hqJ2KMXDn6Q_IpQNdRxI";
 
-// Rileva il gruppo dall'URL (?group=...) o usa il gruppo predefinito 'global'
+// Rileva il gruppo dall'URL (?group=...) o usa il gruppo predefinito 'sigmalab'
 const urlParams = new URLSearchParams(window.location.search);
-let CURRENT_GROUP_ID = (urlParams.get('group') || 'global').toLowerCase().replace(/[^a-z0-9_-]/g, '');
-if (!CURRENT_GROUP_ID) CURRENT_GROUP_ID = 'global';
+let CURRENT_GROUP_ID = (urlParams.get('group') || 'sigmalab').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+if (!CURRENT_GROUP_ID) CURRENT_GROUP_ID = 'sigmalab';
 
 const STORAGE_KEY = `calcetto_state_${CURRENT_GROUP_ID}`;
 
 // Stato dell'applicazione
 let state = {
-  group_name: CURRENT_GROUP_ID === 'global' ? "POLIMI PHD" : CURRENT_GROUP_ID.toUpperCase(),
-  admin_pin: CURRENT_GROUP_ID === 'global' ? "0000" : "1234",
+  group_name: CURRENT_GROUP_ID.toUpperCase(),
+  admin_pin: "1234",
   stats: {},
   presenti: [],
   storico_squadre_oggi: [],
   partite_giocate_oggi: {},
-  coppie_giocate_oggi: []
+  coppie_giocate_oggi: [],
+  storico_partite: []
 };
 
 let isSyncing = false;
@@ -522,6 +523,20 @@ function registraVittoria(matchId, vincitriceNum) {
   match.vincitrice = vincitriceNum;
   match.deltaElo = Math.round(deltaA);
 
+  if (!state.storico_partite) state.storico_partite = [];
+  if (!state.storico_partite.some(p => p.id === match.id)) {
+    state.storico_partite.unshift({
+      id: match.id,
+      timestamp: Date.now(),
+      data: new Date().toLocaleDateString('it-IT'),
+      ora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      sq1: [...match.sq1],
+      sq2: [...match.sq2],
+      vincitrice: vincitriceNum,
+      deltaElo: Math.round(deltaA)
+    });
+  }
+
   salvaStatoLocale();
   renderAll();
   showToast(`🏆 Vittoria registrata! (+${Math.round(deltaA)} Elo per i vincitori)`);
@@ -531,10 +546,14 @@ function annullaRisultatoMatch(matchId) {
   const idx = (state.storico_squadre_oggi || []).findIndex(m => m.id === matchId);
   if (idx >= 0) {
     state.storico_squadre_oggi.splice(idx, 1);
-    salvaStatoLocale();
-    renderAll();
-    showToast("Partita rimossa dallo storico");
   }
+  if (state.storico_partite) {
+    const pIdx = state.storico_partite.findIndex(p => p.id === matchId);
+    if (pIdx >= 0) state.storico_partite.splice(pIdx, 1);
+  }
+  salvaStatoLocale();
+  renderAll();
+  showToast("Partita rimossa dallo storico");
 }
 
 function confermaAzzeraSessione() {
@@ -591,7 +610,7 @@ function renderClassifica() {
         return;
       }
       podiumContainer.innerHTML += `
-        <div class="rounded-2xl border ${colors[idx]} p-3 text-center flex flex-col items-center justify-between shadow-sm">
+        <div onclick="apriDettaglioGiocatore('${p.nome}')" title="Tocca per vedere statistiche e compagni" class="rounded-2xl border ${colors[idx]} p-3 text-center flex flex-col items-center justify-between shadow-sm cursor-pointer hover:scale-105 active:scale-95 transition">
           <span class="text-2xl">${medals[idx]}</span>
           <div class="font-bold text-xs truncate w-full mt-1">${p.nome}</div>
           <div class="text-sm font-extrabold mt-0.5">${Math.round(p.elo)} pt</div>
@@ -604,7 +623,7 @@ function renderClassifica() {
   const rankedList = document.getElementById('ranked-list');
   const countBadge = document.getElementById('active-players-count');
   rankedList.innerHTML = '';
-  countBadge.innerText = `${attivi.length} attivi`;
+  countBadge.innerText = `${attivi.length} attivi (tocca per dettagli)`;
 
   if (attivi.length === 0) {
     rankedList.innerHTML = `
@@ -616,7 +635,7 @@ function renderClassifica() {
     attivi.forEach((p, i) => {
       const pos = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
       rankedList.innerHTML += `
-        <div class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/30 transition">
+        <div onclick="apriDettaglioGiocatore('${p.nome}')" title="Tocca per vedere statistiche e compagni" class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/40 active:bg-slate-700/70 transition cursor-pointer">
           <div class="flex items-center space-x-3">
             <span class="font-bold text-sm text-slate-300 w-6">${pos}</span>
             <div>
@@ -630,9 +649,12 @@ function renderClassifica() {
               </div>
             </div>
           </div>
-          <div class="text-right">
-            <span class="text-base font-extrabold text-emerald-400">${Math.round(p.elo)}</span>
-            <span class="text-xs text-slate-400 block -mt-1">punti</span>
+          <div class="text-right flex items-center space-x-2">
+            <div>
+              <span class="text-base font-extrabold text-emerald-400">${Math.round(p.elo)}</span>
+              <span class="text-xs text-slate-400 block -mt-1">punti</span>
+            </div>
+            <span class="text-slate-500 text-xs pl-1">›</span>
           </div>
         </div>
       `;
@@ -656,9 +678,13 @@ function renderGestione() {
   aggiornaHeaderGruppo();
   const container = document.getElementById('gestione-players-list');
   const countBadge = document.getElementById('total-registered-badge');
+  const matchesBadge = document.getElementById('total-matches-badge');
   const allNames = Object.keys(state.stats || {}).sort();
 
   countBadge.innerText = `${allNames.length} colleghi`;
+  if (matchesBadge) {
+    matchesBadge.innerText = `${(state.storico_partite || []).length} partite archiviate`;
+  }
   container.innerHTML = '';
 
   if (allNames.length === 0) {
@@ -876,6 +902,28 @@ async function pullFromCloud(showToastFeedback = false) {
           if (!state.admin_pin) {
             state.admin_pin = CURRENT_GROUP_ID === 'global' ? "0000" : "1234";
           }
+          if (!state.storico_partite) state.storico_partite = [];
+          if (state.storico_squadre_oggi && state.storico_squadre_oggi.length > 0) {
+            let backfilled = false;
+            state.storico_squadre_oggi.forEach(m => {
+              if (m.risolta && !state.storico_partite.some(p => p.id === m.id)) {
+                state.storico_partite.push({
+                  id: m.id,
+                  timestamp: Date.now(),
+                  data: new Date().toLocaleDateString('it-IT'),
+                  ora: m.timestamp || '13:00',
+                  sq1: [...m.sq1],
+                  sq2: [...m.sq2],
+                  vincitrice: m.vincitrice,
+                  deltaElo: m.deltaElo || 20
+                });
+                backfilled = true;
+              }
+            });
+            if (backfilled) {
+              pushToCloud();
+            }
+          }
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
           renderAll();
           isSyncing = false;
@@ -901,6 +949,192 @@ async function pullFromCloud(showToastFeedback = false) {
       showToast("Impossibile connettersi al Cloud (offline)", "error");
     }
   }
+}
+
+// ==========================================
+// SEZIONE 5: ANALISI PARTITE & RIVALITÀ
+// ==========================================
+function analizzaStatisticheGiocatore(nome) {
+  const partite = state.storico_partite || [];
+  const compagni = {};
+  const avversari = {};
+  let totaliG = 0;
+  let vinteG = 0;
+  let perseG = 0;
+
+  partite.forEach(p => {
+    const inSq1 = (p.sq1 || []).includes(nome);
+    const inSq2 = (p.sq2 || []).includes(nome);
+    if (!inSq1 && !inSq2) return;
+
+    totaliG++;
+    const miaSq = inSq1 ? 1 : 2;
+    const hoVinto = p.vincitrice === miaSq;
+    if (hoVinto) vinteG++; else perseG++;
+
+    const compagniMatch = (inSq1 ? p.sq1 : p.sq2).filter(g => g !== nome);
+    const avversariMatch = inSq1 ? p.sq2 : p.sq1;
+
+    compagniMatch.forEach(c => {
+      if (!compagni[c]) compagni[c] = { giocate: 0, vinte: 0, perse: 0 };
+      compagni[c].giocate++;
+      if (hoVinto) compagni[c].vinte++; else compagni[c].perse++;
+    });
+
+    avversariMatch.forEach(a => {
+      if (!avversari[a]) avversari[a] = { giocate: 0, vinte: 0, perse: 0 };
+      avversari[a].giocate++;
+      if (hoVinto) avversari[a].vinte++; else avversari[a].perse++;
+    });
+  });
+
+  const listCompagni = Object.entries(compagni).map(([n, d]) => ({
+    nome: n,
+    ...d,
+    winRate: (d.vinte / d.giocate) * 100
+  })).sort((a, b) => b.winRate - a.winRate || b.vinte - a.vinte);
+
+  const listAvversari = Object.entries(avversari).map(([n, d]) => ({
+    nome: n,
+    ...d,
+    winRate: (d.vinte / d.giocate) * 100
+  }));
+
+  const bestiaNera = [...listAvversari].sort((a, b) => b.perse - a.perse || a.winRate - b.winRate)[0] || null;
+  const vittimaPreferita = [...listAvversari].sort((a, b) => b.vinte - a.vinte || b.winRate - a.winRate)[0] || null;
+
+  return {
+    totali: totaliG,
+    vinte: vinteG,
+    perse: perseG,
+    winRate: totaliG > 0 ? (vinteG / totaliG) * 100 : 0,
+    migliorPartner: listCompagni.length > 0 ? listCompagni[0] : null,
+    bestiaNera: (bestiaNera && bestiaNera.perse > 0) ? bestiaNera : null,
+    vittimaPreferita: (vittimaPreferita && vittimaPreferita.vinte > 0) ? vittimaPreferita : null,
+    tuttiCompagni: listCompagni,
+    tuttiAvversari: listAvversari
+  };
+}
+
+function apriDettaglioGiocatore(nome) {
+  const p = state.stats && state.stats[nome];
+  if (!p) return;
+
+  const modal = document.getElementById('player-modal');
+  if (!modal) return;
+
+  const role = p.ruolo || 'Indifferente';
+  let avatar = '⚽';
+  if (role === 'Attaccante') avatar = '⚡';
+  else if (role === 'Difesa') avatar = '🛡️';
+
+  document.getElementById('pm-avatar').innerText = avatar;
+  document.getElementById('pm-nome').innerText = nome;
+  document.getElementById('pm-ruolo').innerText = role;
+  document.getElementById('pm-elo').innerText = `${Math.round(p.elo || 1200)} pt`;
+
+  const totali = (p.vinte || 0) + (p.perse || 0);
+  const winRate = totali > 0 ? ((p.vinte || 0) / totali) * 100 : 0;
+  document.getElementById('pm-giocate').innerText = totali;
+  document.getElementById('pm-vp').innerText = `${p.vinte || 0} / ${p.perse || 0}`;
+  document.getElementById('pm-winrate').innerText = `${winRate.toFixed(0)}%`;
+
+  const stats = analizzaStatisticheGiocatore(nome);
+
+  // Partner ideale
+  if (stats.migliorPartner) {
+    document.getElementById('pm-partner-nome').innerText = stats.migliorPartner.nome;
+    document.getElementById('pm-partner-stats').innerText = `${stats.migliorPartner.winRate.toFixed(0)}% WR (${stats.migliorPartner.vinte}V / ${stats.migliorPartner.giocate}G)`;
+  } else {
+    document.getElementById('pm-partner-nome').innerText = "Nessuno ancora";
+    document.getElementById('pm-partner-stats').innerText = "";
+  }
+
+  // Bestia Nera
+  if (stats.bestiaNera) {
+    document.getElementById('pm-nemesi-nome').innerText = stats.bestiaNera.nome;
+    document.getElementById('pm-nemesi-stats').innerText = `${stats.bestiaNera.perse} sconfitte su ${stats.bestiaNera.giocate}`;
+  } else {
+    document.getElementById('pm-nemesi-nome').innerText = "Nessuna ancora";
+    document.getElementById('pm-nemesi-stats').innerText = "";
+  }
+
+  // Vittima Preferita
+  if (stats.vittimaPreferita) {
+    document.getElementById('pm-vittima-nome').innerText = stats.vittimaPreferita.nome;
+    document.getElementById('pm-vittima-stats').innerText = `${stats.vittimaPreferita.vinte} vittorie su ${stats.vittimaPreferita.giocate}`;
+  } else {
+    document.getElementById('pm-vittima-nome').innerText = "Nessuna ancora";
+    document.getElementById('pm-vittima-stats').innerText = "";
+  }
+
+  // Breakdown compagni & avversari
+  const breakdownContainer = document.getElementById('pm-breakdown-list');
+  breakdownContainer.innerHTML = '';
+
+  if (stats.tuttiCompagni.length === 0 && stats.tuttiAvversari.length === 0) {
+    breakdownContainer.innerHTML = '<p class="text-slate-400 text-center py-2">Nessun match ancora archiviato per questo giocatore.</p>';
+  } else {
+    if (stats.tuttiCompagni.length > 0) {
+      breakdownContainer.innerHTML += '<div class="font-bold text-emerald-400 mb-1">In Coppia Con:</div>';
+      stats.tuttiCompagni.forEach(c => {
+        breakdownContainer.innerHTML += `
+          <div class="flex justify-between items-center py-1 border-b border-slate-800/80">
+            <span class="text-white font-medium">${c.nome}</span>
+            <span class="text-slate-400">${c.vinte}V - ${c.perse}P (${c.winRate.toFixed(0)}%)</span>
+          </div>
+        `;
+      });
+    }
+
+    if (stats.tuttiAvversari.length > 0) {
+      breakdownContainer.innerHTML += '<div class="font-bold text-rose-400 mt-2.5 mb-1">Da Avversario Contro:</div>';
+      stats.tuttiAvversari.forEach(a => {
+        breakdownContainer.innerHTML += `
+          <div class="flex justify-between items-center py-1 border-b border-slate-800/80">
+            <span class="text-white font-medium">${a.nome}</span>
+            <span class="text-slate-400">${a.vinte}V - ${a.perse}P (${a.winRate.toFixed(0)}% mie vittorie)</span>
+          </div>
+        `;
+      });
+    }
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function chiudiDettaglioGiocatore() {
+  const modal = document.getElementById('player-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function esportaStoricoCSV() {
+  const partite = state.storico_partite || [];
+  if (partite.length === 0) {
+    showToast("Nessuna partita archiviata da esportare!", "error");
+    return;
+  }
+
+  let csv = "ID,Data,Ora,Squadra1_G1,Squadra1_G2,Squadra2_G1,Squadra2_G2,Squadra_Vincente,Delta_Elo\n";
+  partite.forEach(p => {
+    const s1g1 = (p.sq1 && p.sq1[0]) || "";
+    const s1g2 = (p.sq1 && p.sq1[1]) || "";
+    const s2g1 = (p.sq2 && p.sq2[0]) || "";
+    const s2g2 = (p.sq2 && p.sq2[1]) || "";
+    const vinc = p.vincitrice === 1 ? "Squadra 1" : "Squadra 2";
+    csv += `"${p.id}","${p.data || ''}","${p.ora || ''}","${s1g1}","${s1g2}","${s2g1}","${s2g2}","${vinc}",${p.deltaElo || 0}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `calcetto_${CURRENT_GROUP_ID}_storico_partite.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("📥 Archivio CSV scaricato con successo!");
 }
 
 // --- SERVICE WORKER REGISTRATION (PWA) ---
