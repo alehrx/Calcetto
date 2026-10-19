@@ -993,10 +993,11 @@ function confermaResetClassifica() {
       state.storico_squadre_oggi = [];
       state.partite_giocate_oggi = {};
       state.coppie_giocate_oggi = [];
+      state.storico_partite = [];
 
       salvaStatoLocale();
       renderAll();
-      showToast("🏆 Classifica del gruppo azzerata a 1200 pt!");
+      showToast("🏆 Stagione azzerata: classifica ed esiti delle coppie ripartono da zero!");
     }
   );
 }
