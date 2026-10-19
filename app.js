@@ -610,7 +610,7 @@ function renderClassifica() {
         return;
       }
       podiumContainer.innerHTML += `
-        <div onclick="apriDettaglioGiocatore('${p.nome}')" title="Tocca per vedere statistiche e compagni" class="rounded-2xl border ${colors[idx]} p-3 text-center flex flex-col items-center justify-between shadow-sm cursor-pointer hover:scale-105 active:scale-95 transition">
+        <div class="rounded-2xl border ${colors[idx]} p-3 text-center flex flex-col items-center justify-between shadow-sm">
           <span class="text-2xl">${medals[idx]}</span>
           <div class="font-bold text-xs truncate w-full mt-1">${p.nome}</div>
           <div class="text-sm font-extrabold mt-0.5">${Math.round(p.elo)} pt</div>
@@ -623,7 +623,7 @@ function renderClassifica() {
   const rankedList = document.getElementById('ranked-list');
   const countBadge = document.getElementById('active-players-count');
   rankedList.innerHTML = '';
-  countBadge.innerText = `${attivi.length} attivi (tocca per dettagli)`;
+  countBadge.innerText = `${attivi.length} attivi`;
 
   if (attivi.length === 0) {
     rankedList.innerHTML = `
@@ -635,7 +635,7 @@ function renderClassifica() {
     attivi.forEach((p, i) => {
       const pos = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
       rankedList.innerHTML += `
-        <div onclick="apriDettaglioGiocatore('${p.nome}')" title="Tocca per vedere statistiche e compagni" class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/40 active:bg-slate-700/70 transition cursor-pointer">
+        <div class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/30 transition">
           <div class="flex items-center space-x-3">
             <span class="font-bold text-sm text-slate-300 w-6">${pos}</span>
             <div>
@@ -649,12 +649,9 @@ function renderClassifica() {
               </div>
             </div>
           </div>
-          <div class="text-right flex items-center space-x-2">
-            <div>
-              <span class="text-base font-extrabold text-emerald-400">${Math.round(p.elo)}</span>
-              <span class="text-xs text-slate-400 block -mt-1">punti</span>
-            </div>
-            <span class="text-slate-500 text-xs pl-1">›</span>
+          <div class="text-right">
+            <span class="text-base font-extrabold text-emerald-400">${Math.round(p.elo)}</span>
+            <span class="text-xs text-slate-400 block -mt-1">punti</span>
           </div>
         </div>
       `;

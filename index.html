@@ -290,27 +290,6 @@
         </div>
       </div>
 
-      <!-- Data Export / Postprocessing Card -->
-      <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="font-bold text-white text-base flex items-center space-x-2">
-            <span>📊</span>
-            <span>Archivio Partite & Analisi</span>
-          </h2>
-          <span id="total-matches-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-            0 partite
-          </span>
-        </div>
-        <p class="text-xs text-slate-400 leading-relaxed">
-          Tutte le partite giocate vengono archiviate per calcolare statistiche di coppia, rivalità e compagni ideali. Puoi scaricare lo storico completo in formato CSV per analizzarlo con Excel o Python:
-        </p>
-
-        <button onclick="esportaStoricoCSV()" class="w-full bg-slate-700 hover:bg-slate-600 active:scale-95 text-white font-semibold py-2.5 px-3 rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow">
-          <span>📥</span>
-          <span>Scarica Storico Partite (.CSV)</span>
-        </button>
-      </div>
-
       <!-- Danger Zone / Reset Classifica Card -->
       <div class="bg-rose-950/20 border border-rose-900/40 rounded-2xl p-4 shadow-sm space-y-3">
         <h2 class="font-bold text-rose-400 text-sm flex items-center space-x-2">
@@ -370,97 +349,6 @@
           Conferma
         </button>
       </div>
-    </div>
-  </div>
-
-  <!-- Player Detail / Rivalry Analytics Modal -->
-  <div id="player-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-800 border border-slate-700 max-w-sm w-full rounded-2xl p-5 shadow-2xl space-y-4 max-h-[88vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
-      <div class="flex items-center justify-between border-b border-slate-700/60 pb-3">
-        <div class="flex items-center space-x-2.5">
-          <span class="text-3xl" id="pm-avatar">⚽</span>
-          <div>
-            <h3 id="pm-nome" class="font-bold text-base text-white leading-tight">Nome</h3>
-            <div class="flex items-center space-x-2 text-xs text-slate-400 mt-0.5">
-              <span id="pm-ruolo" class="px-1.5 py-0.2 rounded bg-slate-700 text-slate-300">Ruolo</span>
-              <span id="pm-elo" class="font-extrabold text-emerald-400">1200 pt</span>
-            </div>
-          </div>
-        </div>
-        <button onclick="chiudiDettaglioGiocatore()" class="text-slate-400 hover:text-white p-1 rounded-lg text-lg">✕</button>
-      </div>
-
-      <div class="overflow-y-auto space-y-3 pr-1 flex-1 text-xs">
-        <!-- Overview Stats -->
-        <div class="grid grid-cols-3 gap-2 text-center">
-          <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-700/50">
-            <span class="text-slate-400 block text-[10px]">Giocate</span>
-            <b id="pm-giocate" class="text-sm text-white">0</b>
-          </div>
-          <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-700/50">
-            <span class="text-slate-400 block text-[10px]">V / P</span>
-            <b id="pm-vp" class="text-sm text-white">0 / 0</b>
-          </div>
-          <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-700/50">
-            <span class="text-slate-400 block text-[10px]">Win Rate</span>
-            <b id="pm-winrate" class="text-sm text-emerald-400">0%</b>
-          </div>
-        </div>
-
-        <!-- Highlights (Partner Ideale / Bestia Nera / Vittima) -->
-        <div class="space-y-2">
-          <!-- Partner Ideale -->
-          <div class="bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-2.5 flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <span class="text-lg">🤝</span>
-              <div>
-                <span class="text-[10px] text-emerald-400 font-semibold block uppercase">Miglior Partner</span>
-                <span id="pm-partner-nome" class="font-bold text-white text-xs">N/A</span>
-              </div>
-            </div>
-            <span id="pm-partner-stats" class="text-[11px] text-emerald-300 font-medium"></span>
-          </div>
-
-          <!-- Bestia Nera -->
-          <div class="bg-rose-950/20 border border-rose-500/20 rounded-xl p-2.5 flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <span class="text-lg">😈</span>
-              <div>
-                <span class="text-[10px] text-rose-400 font-semibold block uppercase">Bestia Nera (Più Ostico)</span>
-                <span id="pm-nemesi-nome" class="font-bold text-white text-xs">N/A</span>
-              </div>
-            </div>
-            <span id="pm-nemesi-stats" class="text-[11px] text-rose-300 font-medium"></span>
-          </div>
-
-          <!-- Vittima Preferita -->
-          <div class="bg-amber-950/20 border border-amber-500/20 rounded-xl p-2.5 flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <span class="text-lg">🎯</span>
-              <div>
-                <span class="text-[10px] text-amber-400 font-semibold block uppercase">Vittima Preferita</span>
-                <span id="pm-vittima-nome" class="font-bold text-white text-xs">N/A</span>
-              </div>
-            </div>
-            <span id="pm-vittima-stats" class="text-[11px] text-amber-300 font-medium"></span>
-          </div>
-        </div>
-
-        <!-- All Partners and Opponents Breakdown -->
-        <details class="bg-slate-900/60 rounded-xl border border-slate-700/50 p-2.5 group">
-          <summary class="font-semibold text-slate-300 text-xs cursor-pointer flex justify-between items-center">
-            <span>👥 Dettaglio Scontri e Compagni</span>
-            <span class="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
-          </summary>
-          <div id="pm-breakdown-list" class="mt-2.5 space-y-2 pt-2 border-t border-slate-800 text-[11px]">
-            <!-- Injected by JS -->
-          </div>
-        </details>
-      </div>
-
-      <button type="button" onclick="chiudiDettaglioGiocatore()" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2.5 rounded-xl text-xs transition">
-        Chiudi
-      </button>
     </div>
   </div>
 
