@@ -430,11 +430,16 @@ function renderMatchesList() {
       <!-- Actions / Winner Selector -->
       ${!m.risolta ? `
         <div class="grid grid-cols-2 gap-2 mt-3 pt-2">
-          <button onclick="registraVittoria('${m.id}', 1)" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-2 px-3 rounded-xl text-xs transition shadow flex items-center justify-center space-x-1">
+          <button onclick="registraVittoria('${m.id}', 1)" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-2.5 px-3 rounded-xl text-xs transition shadow flex items-center justify-center space-x-1">
             <span>🏆</span> <span>Vince Squadra 1</span>
           </button>
-          <button onclick="registraVittoria('${m.id}', 2)" class="bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold py-2 px-3 rounded-xl text-xs transition shadow flex items-center justify-center space-x-1">
+          <button onclick="registraVittoria('${m.id}', 2)" class="bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold py-2.5 px-3 rounded-xl text-xs transition shadow flex items-center justify-center space-x-1">
             <span>🏆</span> <span>Vince Squadra 2</span>
+          </button>
+        </div>
+        <div class="mt-2 pt-1 flex justify-center">
+          <button onclick="scartaPartita('${m.id}')" class="text-xs text-slate-400 hover:text-rose-400 font-medium py-1 px-3 rounded-lg hover:bg-rose-500/10 active:scale-95 transition flex items-center space-x-1">
+            <span>❌</span> <span>Scarta partita</span>
           </button>
         </div>
       ` : `
@@ -448,6 +453,37 @@ function renderMatchesList() {
 
     container.appendChild(matchCard);
   });
+}
+
+function scartaPartita(matchId) {
+  const matchIndex = (state.storico_squadre_oggi || []).findIndex(m => m.id === matchId);
+  if (matchIndex < 0) return;
+
+  const match = state.storico_squadre_oggi[matchIndex];
+
+  // Ripristina il contatore delle partite giocate oggi per i 4 giocatori
+  const giocatori = [...(match.sq1 || []), ...(match.sq2 || [])];
+  if (state.partite_giocate_oggi) {
+    giocatori.forEach(g => {
+      if (state.partite_giocate_oggi[g] && state.partite_giocate_oggi[g] > 0) {
+        state.partite_giocate_oggi[g] -= 1;
+      }
+    });
+  }
+
+  // Rimuovi le coppie dalla memoria delle coppie giocate oggi
+  if (state.coppie_giocate_oggi && match.sq1 && match.sq2) {
+    const pair1 = pairKey(match.sq1[0], match.sq1[1]);
+    const pair2 = pairKey(match.sq2[0], match.sq2[1]);
+    state.coppie_giocate_oggi = state.coppie_giocate_oggi.filter(k => k !== pair1 && k !== pair2);
+  }
+
+  // Rimuovi la partita dallo storico odierno
+  state.storico_squadre_oggi.splice(matchIndex, 1);
+
+  salvaStatoLocale();
+  renderAll();
+  showToast("❌ Partita scartata! Contatori ripristinati.");
 }
 
 function calcolaNuovoEloCoppie(squadraVincente, squadraPerdente, K = 40) {
