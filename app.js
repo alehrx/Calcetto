@@ -136,14 +136,24 @@ function renderPresentiPills() {
     return;
   }
 
+  const allMatches = ottieniTuttePartiteArchiviate();
+
   allNames.forEach(name => {
     const isSelected = (state.presenti || []).includes(name);
     const role = state.stats[name].ruolo || 'Indifferente';
     const numPartiteOggi = (state.partite_giocate_oggi || {})[name] || 0;
+    const streak = calcolaStrisciaGiocatore(name, allMatches);
 
     let roleIcon = '⚽';
     if (role === 'Attaccante') roleIcon = '⚡';
     else if (role === 'Difesa') roleIcon = '🛡️';
+
+    let streakTag = '';
+    if (streak && streak.type === 'win') {
+      streakTag = `<span title="In striscia: ${streak.count} vittorie consecutive!" class="ml-1 text-[10px] px-1 py-0.2 rounded-full bg-amber-500/30 text-amber-300 font-bold">🔥${streak.count}</span>`;
+    } else if (streak && streak.type === 'loss') {
+      streakTag = `<span title="Periodo no: ${streak.count} sconfitte consecutive" class="ml-1 text-[10px] px-1 py-0.2 rounded-full bg-cyan-500/30 text-cyan-300 font-bold">🧊${streak.count}</span>`;
+    }
 
     const pill = document.createElement('button');
     pill.type = 'button';
@@ -157,6 +167,7 @@ function renderPresentiPills() {
     pill.innerHTML = `
       <span class="text-[11px] opacity-80">${roleIcon}</span>
       <span>${name}</span>
+      ${streakTag}
       ${numPartiteOggi > 0 ? `<span class="ml-1 text-[10px] px-1 rounded-full bg-black/25">${numPartiteOggi}</span>` : ''}
     `;
 
@@ -484,13 +495,19 @@ function renderMatchesList() {
         </div>
       ` : `
         ${m.punteggio ? `
-          <div class="mt-2 pt-2 border-t border-slate-800 flex justify-center">
-            <div class="inline-flex items-center space-x-2 bg-slate-950/70 border border-slate-800 px-3 py-1 rounded-xl">
-              <span class="text-[11px] text-slate-400 font-medium">Risultato:</span>
-              <span class="text-sm font-black ${m.vincitrice === 1 ? 'text-blue-400' : 'text-slate-400'}">${m.punteggio.sq1}</span>
-              <span class="text-xs text-slate-600">-</span>
-              <span class="text-sm font-black ${m.vincitrice === 2 ? 'text-rose-400' : 'text-slate-400'}">${m.punteggio.sq2}</span>
-            </div>
+          <div class="mt-2 pt-2 border-t border-slate-800 flex items-center justify-center space-x-2">
+            ${(m.punteggio.sq1 === 0 || m.punteggio.sq2 === 0) ? `
+              <span class="px-2.5 py-1 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 text-xs font-black uppercase tracking-wider flex items-center space-x-1 animate-pulse">
+                <span>💀</span> <span>CAPPOTTO (${m.punteggio.sq1} - ${m.punteggio.sq2})</span>
+              </span>
+            ` : `
+              <div class="inline-flex items-center space-x-2 bg-slate-950/70 border border-slate-800 px-3 py-1 rounded-xl">
+                <span class="text-[11px] text-slate-400 font-medium">Risultato:</span>
+                <span class="text-sm font-black ${m.vincitrice === 1 ? 'text-blue-400' : 'text-slate-400'}">${m.punteggio.sq1}</span>
+                <span class="text-xs text-slate-600">-</span>
+                <span class="text-sm font-black ${m.vincitrice === 2 ? 'text-rose-400' : 'text-slate-400'}">${m.punteggio.sq2}</span>
+              </div>
+            `}
           </div>
         ` : ''}
         <div class="mt-2 pt-1 flex justify-end">
@@ -610,8 +627,13 @@ function registraVittoria(matchId, vincitriceNum) {
 
   salvaStatoLocale();
   renderAll();
-  const scoreMsg = punteggio ? ` [${punteggio.sq1} - ${punteggio.sq2}]` : '';
-  showToast(`🏆 Vittoria registrata! (+${Math.round(deltaA)} Elo)${scoreMsg}`);
+  const isCappotto = punteggio && ((punteggio.sq1 === 0 && punteggio.sq2 > 0) || (punteggio.sq2 === 0 && punteggio.sq1 > 0));
+  if (isCappotto) {
+    showToast(`💀 CAPPOTTO CLAMOROSO! ${punteggio.sq1} a ${punteggio.sq2} senza pietà!`);
+  } else {
+    const scoreMsg = punteggio ? ` [${punteggio.sq1} - ${punteggio.sq2}]` : '';
+    showToast(`🏆 Vittoria registrata! (+${Math.round(deltaA)} Elo)${scoreMsg}`);
+  }
 }
 
 function annullaRisultatoMatch(matchId) {
@@ -804,6 +826,121 @@ function toggleDettaglioClassifica(nome) {
   }
 }
 
+function calcolaStrisciaGiocatore(name, allMatches) {
+  if (!allMatches) allMatches = ottieniTuttePartiteArchiviate();
+  const pMatches = allMatches.filter(m => 
+    (m.sq1 || []).includes(name) || (m.sq2 || []).includes(name)
+  );
+  if (pMatches.length === 0) return null;
+
+  const firstWon = (pMatches[0].sq1.includes(name) && pMatches[0].vincitrice === 1) ||
+                   (pMatches[0].sq2.includes(name) && pMatches[0].vincitrice === 2);
+  let count = 0;
+  for (let m of pMatches) {
+    const won = (m.sq1.includes(name) && m.vincitrice === 1) ||
+                (m.sq2.includes(name) && m.vincitrice === 2);
+    if (won === firstWon) count++;
+    else break;
+  }
+  return count >= 3 ? { type: firstWon ? 'win' : 'loss', count } : null;
+}
+
+function calcolaBadgesETitoli(attivi, allMatches) {
+  if (!allMatches) allMatches = ottieniTuttePartiteArchiviate();
+  const badges = {};
+  const cappotti = {};
+  const streaks = {};
+
+  attivi.forEach(p => {
+    badges[p.nome] = [];
+    cappotti[p.nome] = { inflitti: 0, subiti: 0 };
+    streaks[p.nome] = calcolaStrisciaGiocatore(p.nome, allMatches);
+  });
+
+  if (attivi.length > 0) {
+    // 1. Re del Calcetto (1° posto assoluto)
+    badges[attivi[0].nome].push({
+      icon: '👑',
+      tag: 'Re del Calcetto',
+      desc: '1° posto nella classifica generale'
+    });
+
+    // 2. Muro (Miglior Difensore)
+    const difensori = [...attivi].filter(p => p.ruolo === 'Difesa').sort((a, b) => b.elo - a.elo);
+    if (difensori.length > 0) {
+      badges[difensori[0].nome].push({
+        icon: '🛡️',
+        tag: 'Muro del Lab',
+        desc: `Miglior Difensore per Elo (${Math.round(difensori[0].elo)} pt)`
+      });
+    }
+
+    // 3. Bomber (Miglior Attaccante)
+    const attaccanti = [...attivi].filter(p => p.ruolo === 'Attaccante').sort((a, b) => b.elo - a.elo);
+    if (attaccanti.length > 0) {
+      badges[attaccanti[0].nome].push({
+        icon: '⚡',
+        tag: 'Bomber di Razza',
+        desc: `Miglior Attaccante per Elo (${Math.round(attaccanti[0].elo)} pt)`
+      });
+    }
+
+    // 4. Stakanovista (Record di partite giocate)
+    const maxTotali = Math.max(...attivi.map(p => p.totali));
+    if (maxTotali > 0) {
+      const stak = attivi.find(p => p.totali === maxTotali);
+      if (stak) {
+        badges[stak.nome].push({
+          icon: '☕',
+          tag: 'Stakanovista',
+          desc: `Record di presenze con ${stak.totali} partite giocate`
+        });
+      }
+    }
+
+    // 5. Scalatore del Mese / Trend Recente (ultime 5 partite)
+    const recentDeltas = {};
+    attivi.forEach(p => {
+      const pMatches = allMatches.filter(m => (m.sq1 || []).includes(p.nome) || (m.sq2 || []).includes(p.nome));
+      const last5 = pMatches.slice(0, 5);
+      let delta = 0;
+      last5.forEach(m => {
+        const won = (m.sq1.includes(p.nome) && m.vincitrice === 1) || (m.sq2.includes(p.nome) && m.vincitrice === 2);
+        const d = m.deltaElo || 20;
+        delta += won ? d : -d;
+      });
+      recentDeltas[p.nome] = delta;
+
+      // Conta cappotti inflitti e subiti
+      pMatches.forEach(m => {
+        if (m.punteggio && typeof m.punteggio.sq1 === 'number' && typeof m.punteggio.sq2 === 'number') {
+          const isCappotto = (m.punteggio.sq1 === 0 && m.punteggio.sq2 > 0) || (m.punteggio.sq2 === 0 && m.punteggio.sq1 > 0);
+          if (isCappotto) {
+            const inSq1 = m.sq1.includes(p.nome);
+            const won = (inSq1 && m.vincitrice === 1) || (!inSq1 && m.vincitrice === 2);
+            if (won) cappotti[p.nome].inflitti++;
+            else cappotti[p.nome].subiti++;
+          }
+        }
+      });
+    });
+
+    const scalatori = Object.entries(recentDeltas).filter(([_, d]) => d > 0).sort((a, b) => b[1] - a[1]);
+    if (scalatori.length > 0) {
+      const best = scalatori[0];
+      if (badges[best[0]]) {
+        badges[best[0]].push({
+          icon: '🚀',
+          tag: 'Scalatore',
+          desc: `Miglior trend recente (+${best[1]} pt Elo)`
+        });
+      }
+    }
+  }
+
+  return { badges, cappotti, streaks };
+}
+
 // ==========================================
 // SEZIONE 2: CLASSIFICA ELO & PODIO
 // ==========================================
@@ -829,6 +966,9 @@ function renderClassifica() {
   const attivi = list.filter(p => p.totali > 0);
   const inattivi = list.filter(p => p.totali === 0);
 
+  const allMatches = ottieniTuttePartiteArchiviate();
+  const honors = calcolaBadgesETitoli(attivi, allMatches);
+
   const podiumContainer = document.getElementById('podium-container');
   podiumContainer.innerHTML = '';
 
@@ -846,10 +986,14 @@ function renderClassifica() {
         podiumContainer.innerHTML += `<div></div>`;
         return;
       }
+      const isKing = idx === 1; // 1° posto al centro
       podiumContainer.innerHTML += `
         <div class="rounded-2xl border ${colors[idx]} p-3 text-center flex flex-col items-center justify-between shadow-sm">
           <span class="text-2xl">${medals[idx]}</span>
-          <div class="font-bold text-xs truncate w-full mt-1">${p.nome}</div>
+          <div class="font-bold text-xs truncate w-full mt-1 flex items-center justify-center space-x-1">
+            <span>${p.nome}</span>
+            ${isKing ? '<span title="Re del Calcetto">👑</span>' : ''}
+          </div>
           <div class="text-sm font-extrabold mt-0.5">${Math.round(p.elo)} pt</div>
           <div class="text-[10px] opacity-75 mt-0.5">${p.winRate.toFixed(0)}% WR (${p.vinte}V)</div>
         </div>
@@ -875,15 +1019,34 @@ function renderClassifica() {
       const isOpen = openPlayerDetails.has(p.nome);
       const stats = calcolaPartnerEOpponente(p.nome);
 
+      const pBadges = honors.badges[p.nome] || [];
+      const pStreak = honors.streaks[p.nome];
+      const pCappotti = honors.cappotti[p.nome] || { inflitti: 0, subiti: 0 };
+
+      let streakBadgeHtml = '';
+      if (pStreak && pStreak.type === 'win') {
+        streakBadgeHtml = `<span title="In striscia: ${pStreak.count} vittorie consecutive!" class="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black px-1.5 py-0.2 rounded-full flex items-center space-x-0.5"><span>🔥</span><span>${pStreak.count}</span></span>`;
+      } else if (pStreak && pStreak.type === 'loss') {
+        streakBadgeHtml = `<span title="Periodo no: ${pStreak.count} sconfitte consecutive" class="bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-black px-1.5 py-0.2 rounded-full flex items-center space-x-0.5"><span>🧊</span><span>${pStreak.count}</span></span>`;
+      }
+
+      let cappottoTagHtml = '';
+      if (pCappotti.subiti > 0) {
+        cappottoTagHtml = `<span title="Ha subito ${pCappotti.subiti} cappotto/i!" class="bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold px-1.5 py-0.2 rounded-full flex items-center space-x-0.5"><span>💀</span><span>${pCappotti.subiti}</span></span>`;
+      }
+
       rankedList.innerHTML += `
         <div class="border-b border-slate-700/40 last:border-b-0">
-          <div onclick="toggleDettaglioClassifica('${p.nome.replace(/'/g, "\\'")}')" title="Tocca per vedere miglior partner e peggior opponente" class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/30 active:bg-slate-700/60 transition cursor-pointer select-none">
+          <div onclick="toggleDettaglioClassifica('${p.nome.replace(/'/g, "\\'")}')" title="Tocca per vedere statistiche e titoli" class="px-4 py-3 flex items-center justify-between hover:bg-slate-700/30 active:bg-slate-700/60 transition cursor-pointer select-none">
             <div class="flex items-center space-x-3">
               <span class="font-bold text-sm text-slate-300 w-6">${pos}</span>
               <div>
-                <div class="font-bold text-sm text-white flex items-center space-x-1.5">
+                <div class="font-bold text-sm text-white flex items-center space-x-1.5 flex-wrap gap-y-1">
                   <span>${p.nome}</span>
                   <span class="text-[10px] font-normal px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">${p.ruolo}</span>
+                  ${pBadges.map(b => `<span title="${b.tag}: ${b.desc}" class="cursor-help text-xs">${b.icon}</span>`).join('')}
+                  ${streakBadgeHtml}
+                  ${cappottoTagHtml}
                 </div>
                 <div class="text-xs text-slate-400 mt-0.5">
                   Vinte: <b class="text-emerald-400">${p.vinte}</b> | Perse: <b class="text-rose-400">${p.perse}</b> 
@@ -901,7 +1064,7 @@ function renderClassifica() {
           </div>
 
           <!-- Dettaglio Sotto il Nome: Miglior Partner & Peggior Opponente -->
-          <div id="stats-detail-${sId}" class="${isOpen ? '' : 'hidden'} px-4 pb-3 pt-1 bg-slate-900/50 border-t border-slate-800">
+          <div id="stats-detail-${sId}" class="${isOpen ? '' : 'hidden'} px-4 pb-3.5 pt-1.5 bg-slate-900/50 border-t border-slate-800">
             <div class="grid grid-cols-2 gap-2 text-xs mt-1">
               <!-- Miglior Partner -->
               <div class="bg-emerald-950/25 border border-emerald-500/20 rounded-xl p-2.5 flex flex-col justify-between">
@@ -928,9 +1091,40 @@ function renderClassifica() {
               </div>
             </div>
 
+            <!-- Titoli & Riconoscimenti (se presenti) -->
+            ${pBadges.length > 0 ? `
+              <div class="mt-2.5 bg-slate-950/70 border border-amber-500/30 rounded-xl p-2.5 space-y-1.5">
+                <div class="text-[10px] text-amber-400 font-bold uppercase tracking-wider flex items-center space-x-1">
+                  <span>🏅</span> <span>Titoli & Riconoscimenti</span>
+                </div>
+                <div class="grid grid-cols-1 gap-1 text-[11px]">
+                  ${pBadges.map(b => `
+                    <div class="flex items-center space-x-1.5 text-slate-200">
+                      <span class="text-sm">${b.icon}</span>
+                      <span class="font-bold text-white">${b.tag}:</span>
+                      <span class="text-slate-400">${b.desc}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- Storico Cappotti (se presenti) -->
+            ${(pCappotti.inflitti > 0 || pCappotti.subiti > 0) ? `
+              <div class="mt-2 bg-slate-950/40 border border-slate-800 rounded-xl p-2 flex items-center justify-between text-xs">
+                <span class="text-slate-400 text-[11px] flex items-center space-x-1">
+                  <span>💀</span> <span>Storico Cappotti:</span>
+                </span>
+                <span class="font-semibold text-[11px]">
+                  <span class="text-emerald-400 font-bold">${pCappotti.inflitti}</span> inflitti / 
+                  <span class="text-rose-400 font-bold">${pCappotti.subiti}</span> subiti
+                </span>
+              </div>
+            ` : ''}
+
             <!-- Statistiche Gol (Fatti / Subiti / Differenza Reti) -->
             ${stats.gol ? `
-              <div class="mt-2.5 bg-slate-950/60 border border-slate-700/60 rounded-xl p-2.5 flex items-center justify-between text-xs">
+              <div class="mt-2 bg-slate-950/60 border border-slate-700/60 rounded-xl p-2.5 flex items-center justify-between text-xs">
                 <div class="flex items-center space-x-2">
                   <span class="text-base">⚽</span>
                   <div>
