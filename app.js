@@ -267,6 +267,7 @@ function generaProssimaPartita() {
     sq2: [squadra_b[0], squadra_b[1]],
     risolta: false,
     vincitrice: null,
+    data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 
@@ -334,6 +335,7 @@ function creaPartitaManuale() {
     risolta: false,
     vincitrice: null,
     manuale: true,
+    data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 
@@ -355,6 +357,24 @@ function creaPartitaManuale() {
 }
 
 // --- GESTIONE MATCH & ELO UPDATE ---
+function formattaDataSenzaAnno(m) {
+  if (m.data) {
+    const parts = m.data.split('/');
+    if (parts.length >= 2) return `${parts[0]}/${parts[1]}`;
+    return m.data;
+  }
+  if (m.id) {
+    const rawTs = m.id.split('_')[1];
+    if (rawTs && !isNaN(Number(rawTs))) {
+      const d = new Date(Number(rawTs));
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
+      }
+    }
+  }
+  return new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
+}
+
 function renderMatchesList() {
   const container = document.getElementById('matches-container');
   const countBadge = document.getElementById('session-matches-count');
@@ -383,12 +403,15 @@ function renderMatchesList() {
         : 'bg-slate-900/60 border-slate-800 opacity-80'
     }`;
 
+    const dataStr = formattaDataSenzaAnno(m);
+    const dataOraStr = m.timestamp ? `${dataStr}, ${m.timestamp}` : dataStr;
+
     matchCard.innerHTML = `
       <div class="flex items-center justify-between text-xs text-slate-400 mb-3 border-b border-slate-700/50 pb-2">
         <div class="flex items-center space-x-1.5">
           <span class="font-bold text-white">#${matches.length - idx}</span>
           ${m.manuale ? '<span class="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.2 rounded font-medium">Manuale</span>' : ''}
-          <span>• ${m.timestamp || ''}</span>
+          <span>• ${dataOraStr}</span>
         </div>
         ${m.risolta 
           ? `<span class="text-emerald-400 font-semibold flex items-center space-x-1">
