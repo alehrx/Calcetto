@@ -415,7 +415,7 @@ function renderMatchesList() {
         </div>
         ${m.risolta 
           ? `<span class="text-emerald-400 font-semibold flex items-center space-x-1">
-               <span>✓ Risolta (${m.vincitrice === 1 ? 'Squadra 1' : 'Squadra 2'})</span>
+               <span>✓ Risolta ${m.punteggio ? `(${m.punteggio.sq1} - ${m.punteggio.sq2})` : (m.vincitrice === 1 ? '(Squadra 1)' : '(Squadra 2)')}</span>
              </span>`
           : '<span class="text-amber-400 font-semibold animate-pulse">In corso</span>'}
       </div>
@@ -453,7 +453,23 @@ function renderMatchesList() {
 
       <!-- Actions / Winner Selector -->
       ${!m.risolta ? `
-        <div class="grid grid-cols-2 gap-2 mt-3 pt-2">
+        <!-- Optional Score Input -->
+        <div class="mt-2.5 pt-2 border-t border-slate-700/50 flex items-center justify-between px-1">
+          <span class="text-[11px] text-slate-400 flex items-center space-x-1">
+            <span>⚽</span> <span>Punteggio (opzionale):</span>
+          </span>
+          <div class="flex items-center space-x-1.5 bg-slate-900/90 px-2.5 py-1 rounded-xl border border-slate-700">
+            <span class="text-blue-400 font-bold text-xs">🔵</span>
+            <input type="number" id="score-sq1-${m.id}" min="0" max="30" placeholder="10" 
+                   class="w-10 h-7 text-center text-xs font-black bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+            <span class="text-slate-500 font-bold text-xs">-</span>
+            <input type="number" id="score-sq2-${m.id}" min="0" max="30" placeholder="8" 
+                   class="w-10 h-7 text-center text-xs font-black bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-rose-400">
+            <span class="text-rose-400 font-bold text-xs">🔴</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mt-2.5">
           <button onclick="registraVittoria('${m.id}', 1)" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-2.5 px-3 rounded-xl text-xs transition shadow flex items-center justify-center space-x-1">
             <span>🏆</span> <span>Vince Squadra 1</span>
           </button>
@@ -467,7 +483,17 @@ function renderMatchesList() {
           </button>
         </div>
       ` : `
-        <div class="mt-2 pt-2 flex justify-end">
+        ${m.punteggio ? `
+          <div class="mt-2 pt-2 border-t border-slate-800 flex justify-center">
+            <div class="inline-flex items-center space-x-2 bg-slate-950/70 border border-slate-800 px-3 py-1 rounded-xl">
+              <span class="text-[11px] text-slate-400 font-medium">Risultato:</span>
+              <span class="text-sm font-black ${m.vincitrice === 1 ? 'text-blue-400' : 'text-slate-400'}">${m.punteggio.sq1}</span>
+              <span class="text-xs text-slate-600">-</span>
+              <span class="text-sm font-black ${m.vincitrice === 2 ? 'text-rose-400' : 'text-slate-400'}">${m.punteggio.sq2}</span>
+            </div>
+          </div>
+        ` : ''}
+        <div class="mt-2 pt-1 flex justify-end">
           <button onclick="annullaRisultatoMatch('${m.id}')" class="text-xs text-slate-500 hover:text-slate-300 underline transition">
             Elimina questa partita
           </button>
@@ -527,6 +553,26 @@ function registraVittoria(matchId, vincitriceNum) {
   const match = (state.storico_squadre_oggi || []).find(m => m.id === matchId);
   if (!match || match.risolta) return;
 
+  // Lettura opzionale del punteggio gol
+  const in1 = document.getElementById(`score-sq1-${matchId}`);
+  const in2 = document.getElementById(`score-sq2-${matchId}`);
+  let punteggio = null;
+  if (in1 && in2 && in1.value.trim() !== '' && in2.value.trim() !== '') {
+    const s1 = parseInt(in1.value.trim(), 10);
+    const s2 = parseInt(in2.value.trim(), 10);
+    if (!isNaN(s1) && !isNaN(s2) && s1 >= 0 && s2 >= 0) {
+      if (vincitriceNum === 1 && s2 > s1) {
+        showToast("I gol inseriti danno in vantaggio la Squadra 2!", "error");
+        return;
+      }
+      if (vincitriceNum === 2 && s1 > s2) {
+        showToast("I gol inseriti danno in vantaggio la Squadra 1!", "error");
+        return;
+      }
+      punteggio = { sq1: s1, sq2: s2 };
+    }
+  }
+
   const sqVincente = vincitriceNum === 1 ? match.sq1 : match.sq2;
   const sqPerdente = vincitriceNum === 1 ? match.sq2 : match.sq1;
 
@@ -545,6 +591,7 @@ function registraVittoria(matchId, vincitriceNum) {
   match.risolta = true;
   match.vincitrice = vincitriceNum;
   match.deltaElo = Math.round(deltaA);
+  match.punteggio = punteggio;
 
   if (!state.storico_partite) state.storico_partite = [];
   if (!state.storico_partite.some(p => p.id === match.id)) {
@@ -556,13 +603,15 @@ function registraVittoria(matchId, vincitriceNum) {
       sq1: [...match.sq1],
       sq2: [...match.sq2],
       vincitrice: vincitriceNum,
-      deltaElo: Math.round(deltaA)
+      deltaElo: Math.round(deltaA),
+      punteggio: punteggio
     });
   }
 
   salvaStatoLocale();
   renderAll();
-  showToast(`🏆 Vittoria registrata! (+${Math.round(deltaA)} Elo per i vincitori)`);
+  const scoreMsg = punteggio ? ` [${punteggio.sq1} - ${punteggio.sq2}]` : '';
+  showToast(`🏆 Vittoria registrata! (+${Math.round(deltaA)} Elo)${scoreMsg}`);
 }
 
 function annullaRisultatoMatch(matchId) {
@@ -618,7 +667,8 @@ function ottieniTuttePartiteArchiviate() {
         sq1: [...(m.sq1 || [])],
         sq2: [...(m.sq2 || [])],
         vincitrice: m.vincitrice,
-        deltaElo: m.deltaElo || 20
+        deltaElo: m.deltaElo || 20,
+        punteggio: m.punteggio || null
       });
     }
   });
@@ -630,6 +680,9 @@ function calcolaPartnerEOpponente(targetPlayer) {
   const allMatches = ottieniTuttePartiteArchiviate();
   const partners = {};
   const opponents = {};
+  let golFatti = 0;
+  let golSubiti = 0;
+  let partiteConGol = 0;
 
   allMatches.forEach(m => {
     if (!m.sq1 || !m.sq2 || !m.vincitrice) return;
@@ -641,6 +694,14 @@ function calcolaPartnerEOpponente(targetPlayer) {
     const mySq = inSq1 ? m.sq1 : m.sq2;
     const oppSq = inSq1 ? m.sq2 : m.sq1;
     const iWon = (inSq1 && m.vincitrice === 1) || (inSq2 && m.vincitrice === 2);
+
+    if (m.punteggio && typeof m.punteggio.sq1 === 'number' && typeof m.punteggio.sq2 === 'number') {
+      const gf = inSq1 ? m.punteggio.sq1 : m.punteggio.sq2;
+      const gs = inSq1 ? m.punteggio.sq2 : m.punteggio.sq1;
+      golFatti += gf;
+      golSubiti += gs;
+      partiteConGol += 1;
+    }
 
     const partner = mySq.find(p => p !== targetPlayer);
     if (partner) {
@@ -707,9 +768,19 @@ function calcolaPartnerEOpponente(targetPlayer) {
     }
   }
 
+  const statsGol = partiteConGol > 0 ? {
+    partite: partiteConGol,
+    totFatti: golFatti,
+    totSubiti: golSubiti,
+    mediaFatti: (golFatti / partiteConGol).toFixed(1),
+    mediaSubiti: (golSubiti / partiteConGol).toFixed(1),
+    diffReti: golFatti - golSubiti
+  } : null;
+
   return {
     migliorPartner: migliorPartner || { nome: "Nessuno ancora", dettaglio: "Poche partite" },
-    peggiorOpponente: peggiorOpponente || { nome: "Nessuno ancora", dettaglio: "Poche partite" }
+    peggiorOpponente: peggiorOpponente || { nome: "Nessuno ancora", dettaglio: "Poche partite" },
+    gol: statsGol
   };
 }
 
@@ -856,6 +927,31 @@ function renderClassifica() {
                 <div class="text-[11px] text-rose-300 font-medium mt-1">${stats.peggiorOpponente.dettaglio}</div>
               </div>
             </div>
+
+            <!-- Statistiche Gol (Fatti / Subiti / Differenza Reti) -->
+            ${stats.gol ? `
+              <div class="mt-2.5 bg-slate-950/60 border border-slate-700/60 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                <div class="flex items-center space-x-2">
+                  <span class="text-base">⚽</span>
+                  <div>
+                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Media Gol (${stats.gol.partite} ${stats.gol.partite === 1 ? 'partita con punteggio' : 'partite con punteggio'})</span>
+                    <div class="text-white font-bold text-xs mt-0.5">
+                      <span class="text-emerald-400 font-extrabold">${stats.gol.mediaFatti}</span> segnati / <span class="text-rose-400 font-extrabold">${stats.gol.mediaSubiti}</span> subiti a partita
+                    </div>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <span class="text-[10px] text-slate-400 block font-medium">Diff. Reti</span>
+                  <span class="font-black text-xs ${stats.gol.diffReti >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                    ${stats.gol.diffReti > 0 ? '+' : ''}${stats.gol.diffReti}
+                  </span>
+                </div>
+              </div>
+            ` : `
+              <div class="mt-2 text-center text-[10px] text-slate-500 italic py-0.5">
+                ⚽ Nessun punteggio gol registrato finora
+              </div>
+            `}
           </div>
         </div>
       `;
